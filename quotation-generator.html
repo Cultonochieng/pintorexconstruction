@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pintorex Quotation Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="styles.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <link rel="icon" type="image/png" href="images/favicon_io/favicon.ico">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
+    <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 id="pintorex-quotation-generator" class="text-3xl font-bold text-center mb-8 text-gray-600">Pintorex Quotation Generator</h1>
+
+        <div id="loginSection" class="max-w-md mx-auto bg-white p-8 rounded shadow">
+            <form id="loginForm" class="space-y-4">
+                <div class="mb-4">
+                    <label for="password" class="block text-sm font-medium text-gray-700">Enter Password:</label>
+                    <input type="password" id="password" name="password" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                </div>
+                <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Login</button>
+            </form>
+        </div>
+
+        <div id="quotationSection" class="hidden max-w-4xl mx-auto bg-white p-8 rounded shadow">
+            <form id="quotationForm" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="clientName" class="block text-sm font-medium text-gray-700">Client Name:</label>
+                        <input type="text" id="clientName" name="clientName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div>
+                        <label for="projectType" class="block text-sm font-medium text-gray-700">Project Type:</label>
+                        <select id="projectType" name="projectType" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                              <option value="New Construction - Residential">New Construction - Residential</option>
+                              <option value="New Construction - Commercial">New Construction - Commercial</option>
+                              <option value="Renovation - Residential">Renovation - Residential</option>
+                              <option value="Renovation - Commercial">Renovation - Commercial</option>
+                              <option value="Interior Fit-Out">Interior Fit-Out</option>
+                              <option value="Exterior Remodeling">Exterior Remodeling</option>
+                              <option value="Home Addition">Home Addition</option>
+                              <option value="Infrastructure Construction">Infrastructure Construction</option>
+                              <option value="Industrial Construction">Industrial Construction</option>
+                              <option value="Landscaping">Landscaping</option>
+                              <option value="Demolition">Demolition</option>
+                              <option value="Material Supply Only">Material Supply Only</option>
+                              <option value="Equipment Rental">Equipment Rental</option>
+                              <option value="Concrete Work">Concrete Work</option>
+                              <option value="Roofing">Roofing</option>
+                              <option value="Electrical Installation">Electrical Installation</option>
+                              <option value="Plumbing Installation">Plumbing Installation</option>
+                              <option value="HVAC Installation">HVAC Installation</option>
+                              <option value="Painting">Painting</option>
+                              <option value="Flooring Installation">Flooring Installation</option>
+                              <option value="Custom Carpentry">Custom Carpentry</option>
+                              <option value="Site Preparation">Site Preparation</option>
+                              <option value="Other">Other (Please specify in description)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="projectDescription" class="block text-sm font-medium text-gray-700">Project Description:</label>
+                    <textarea id="projectDescription" name="projectDescription" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"></textarea>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 id="materials" class="font-bold text-lg text-gray-700">Materials:</h3>
+                    <div id="materialsContainer" class="space-y-2"></div>
+                    <button type="button" id="addMaterialBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Add Material</button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="laborType" class="block text-sm font-medium text-gray-700">Labor Cost Type:</label>
+                        <select id="laborType" name="laborType" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="custom">Custom Amount</option>
+                            <option value="30">30% of Materials</option>
+                            <option value="28">28% of Materials</option>
+                            <option value="25">25% of Materials</option>
+                            <option value="20">20% of Materials</option>
+                            <option value="15">15% of Materials</option>
+                        </select>
+                    </div>
+                    <div id="customLaborDiv">
+                        <label for="laborCost" class="block text-sm font-medium text-gray-700">Labor Cost (KES):</label>
+                        <input type="number" id="laborCost" name="laborCost" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div>
+                        <label for="vatPercentage" class="block text-sm font-medium text-gray-700">VAT Percentage:</label>
+                        <select id="vatPercentage" name="vatPercentage" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="0">No VAT (0%)</option>
+                            <option value="16">16% (Standard Rate)</option>
+                            <option value="8">8% (Reduced Rate)</option>
+                        </select>
+                    </div>
+                    <div class="mt-6">
+                      <label for="contingencyPercentage" class="block text-sm font-medium text-gray-700">Contingency Percentage:</label>
+                      <select id="contingencyPercentage" name="contingencyPercentage" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                          <option value="0">No Contingency (0%)</option>
+                          <option value="5">5%</option>
+                          <option value="10">10%</option>
+                          <option value="15">15%</option>
+                          <option value="20">20%</option>
+                      </select>
+                  </div>
+                </div>
+
+                <div class="flex justify-center">
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Generate Quotation PDF</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <script src="script/quotation-generator-script.js"></script>
+</body>
+</html>
