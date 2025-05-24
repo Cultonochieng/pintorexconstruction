@@ -5,13 +5,12 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tailwindcss -i ./input.css -o ./styles.css --watch"
+    "build": "npx tailwindcss -i ./input.css -o ./styles.css"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@tailwindcss/cli": "^4.1.7",
     "autoprefixer": "^10.4.14",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
@@ -22,6 +21,6 @@
     "rate-limiter-flexible": "^5.0.3"
   },
   "devDependencies": {
-    "tailwindcss": "^4.1.7"
+    "tailwindcss": "^3.4.1"
   }
 }
