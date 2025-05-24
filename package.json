@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@tailwindcss/cli": "^4.1.7",
     "autoprefixer": "^10.4.14",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
@@ -18,7 +19,9 @@
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
     "postcss": "^8.4.24",
-    "rate-limiter-flexible": "^5.0.3",
-    "tailwindcss": "^3.3.2"
+    "rate-limiter-flexible": "^5.0.3"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.1.7"
   }
 }
