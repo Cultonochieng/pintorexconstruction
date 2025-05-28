@@ -594,76 +594,345 @@ function addDocumentFooter(doc) {
 function generateAcceptanceLetter(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const _pageWidth = doc.internal.pageSize.width;
+    const _pageHeight = doc.internal.pageSize.height;
+    const _margin = 15; // Reduced margin for more content space
+
     const documentNumber = generateDocumentNumber('acceptance');
-    
-    addDocumentHeader(doc, "CONTRACT ACCEPTANCE LETTER", documentNumber);
-    addDocumentFooter(doc);
-    
-    let yPos = 70;
-    
-    // Date
+
+    const _colors = {
+        primary: [31, 41, 55], // Dark grey/blue
+        secondary: [107, 114, 128], // Medium grey
+        accent: [245, 158, 11], // Orange accent
+        text: [17, 24, 39], // Very dark grey for main text
+        subtle: [249, 250, 251] // Very light grey for background fills
+    };
+
+    const _headerHeight = 20; // Reduced header height
+    const _footerHeight = 15; // Kept as is, but content adjusted
+    // Usable Y coordinate before which content should end to leave space for footer and bottom margin
+    const _maxContentYBeforeFooter = _pageHeight - _footerHeight - _margin;
+
+    function addHeader() {
+        doc.setFillColor(..._colors.primary);
+        doc.rect(0, 0, _pageWidth, _headerHeight, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12.5); // Slightly increased
+        doc.text("PINTOREX", _margin, 12); // Adjusted Y to fit new header height
+
+        doc.setFontSize(7.5); // Slightly increased
+        doc.setFont("helvetica", "normal");
+        doc.text("CONSTRUCTION LIMITED", _margin, 18); // Adjusted Y
+
+        doc.setFontSize(7.5); // Slightly increased
+        doc.text([
+            "Tel: +254 769 157174",
+            "Email: pintorexkenya@gmail.com"
+        ], _pageWidth - _margin, 12, { align: "right" }); // Adjusted Y
+    }
+
+    function addFooter() {
+        const footerY = _pageHeight - _footerHeight;
+        doc.setFillColor(..._colors.primary);
+        doc.rect(0, footerY, _pageWidth, _footerHeight, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7); // Slightly increased
+        doc.text([
+            "Pintorex Construction Limited | Building Excellence, Crafting Dreams",
+            "+254 769 157174 | pintorexkenya@gmail.com"
+        ], _pageWidth / 2, footerY + 5, { align: "center" }); // Adjusted Y for better vertical centering
+    }
+
+    // Function to check if a new page is needed and add it
+    function _checkAndAddPage(currentY, spaceRequiredForNextElement = 10) {
+        if (currentY + spaceRequiredForNextElement > _maxContentYBeforeFooter) {
+            doc.addPage();
+            addHeader();
+            addFooter();
+            return _headerHeight + _margin; // New yPos after header on new page
+        }
+        return currentY;
+    }
+
+    // Calculate project totals for reference (assuming data structure is consistent)
+    const materials = JSON.parse(data.materials || '[]'); // Ensure materials is an array
+    const materialsTotal = materials.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0);
+    let labor = data.laborType === 'custom' ? parseFloat(data.laborCost) || 0 : materialsTotal * (parseFloat(data.laborType) / 100);
+    const subtotal = materialsTotal + labor;
+    const vat = subtotal * (parseFloat(data.vatPercentage) / 100);
+    const contingency = subtotal * (parseFloat(data.contingencyPercentage) / 100);
+    const total = subtotal + vat + contingency;
+
+    // Start generating the PDF
+    addHeader();
+    addFooter(); // Add footer to the first page
+
+    let yPos = _headerHeight + 8; // Initial Y position after header, reduced padding
+
+    // Document title
+    const titleText = "CONTRACT ACCEPTANCE LETTER";
+    const titleFontSize = 15.5; // Slightly increased
+    const titleSectionHeight = titleFontSize * 1.2 + 2 + 10; // Text height + line + reduced padding after
+    yPos = _checkAndAddPage(yPos, titleSectionHeight);
+    doc.setTextColor(..._colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(titleFontSize);
+    doc.text(titleText, _pageWidth / 2, yPos, { align: "center" });
+    doc.setDrawColor(..._colors.accent);
+    doc.setLineWidth(0.7); // Slightly thinner line
+    doc.line(_pageWidth / 2 - 60, yPos + 2, _pageWidth / 2 + 60, yPos + 2); // Adjusted line Y
+    yPos += 10; // Reduced padding after title section
+
+    // Document number and date section
+    const docInfoRectHeight = 18; // Reduced height
+    const docInfoSectionHeight = docInfoRectHeight + 4; // rect height + reduced padding after
+    yPos = _checkAndAddPage(yPos, docInfoSectionHeight);
+    doc.setFillColor(..._colors.subtle);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), docInfoRectHeight, 'F');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    doc.text(`Document No: ${documentNumber}`, _margin + 5, yPos + 7); // Adjusted Y
+    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, _pageWidth - _margin - 5, yPos + 7, { align: "right" }); // Adjusted Y
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
-    
-    yPos += 20;
-    
-    // Client address
+    doc.setFontSize(8); // Slightly increased
+    doc.text("Official Contract Acceptance", _margin + 5, yPos + 14); // Adjusted Y
+    doc.text(`Valid from: ${new Date().toLocaleDateString('en-GB')}`, _pageWidth - _margin - 5, yPos + 14, { align: "right" }); // Adjusted Y
+    yPos += docInfoSectionHeight;
+
+    // Client address section
+    const clientAddrRectHeight = 22; // Reduced height
+    const clientAddrSectionHeight = 5 + clientAddrRectHeight + 8; // "TO:" height + rect + reduced padding
+    yPos = _checkAndAddPage(yPos, clientAddrSectionHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text("TO:", _margin, yPos);
+    yPos += 5;
+    doc.setFillColor(..._colors.subtle);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), clientAddrRectHeight, 'F');
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.text);
     doc.text([
         data.clientName,
-        "Dear Sir/Madam,"
-    ], margin, yPos);
-    
-    yPos += 25;
-    
-    // Main content
+        "", // For slight visual separation, can be removed for more compactness
+        "Dear Valued Client,"
+    ], _margin + 5, yPos + 7); // Adjusted Y
+    yPos += clientAddrRectHeight + 8; // Reduced padding
+
+    // Subject line with accent background
+    const subjectRectHeight = 11; // Reduced height
+    const subjectSectionHeight = subjectRectHeight + 6; // rect height + reduced padding after
+    yPos = _checkAndAddPage(yPos, subjectSectionHeight);
+    doc.setFillColor(..._colors.accent);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), subjectRectHeight, 'F');
     doc.setFont("helvetica", "bold");
-    doc.text("RE: ACCEPTANCE OF CONTRACT - " + data.projectType.toUpperCase(), margin, yPos);
-    
-    yPos += 15;
-    
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text(`RE: ACCEPTANCE OF CONTRACT - ${data.projectType.toUpperCase()}`, _margin + 5, yPos + 7.5); // Adjusted Y
+    yPos += subjectRectHeight + 6; // Reduced padding
+
+    // Main content section (intro)
+    yPos = _checkAndAddPage(yPos, 5); // Check for at least one line before starting
     doc.setFont("helvetica", "normal");
-    const content = [
-        "We are pleased to formally accept the contract for the above-mentioned project.",
-        "",
-        "Project Details:",
-        `• Project Type: ${data.projectType}`,
-        `• Project Description: ${data.projectDescription}`,
-        "",
-        "We confirm our commitment to:",
-        "• Complete the project within the agreed timeline",
-        "• Maintain the highest standards of workmanship",
-        "• Comply with all safety regulations and building codes",
-        "• Provide regular progress updates",
-        "",
-        "We look forward to commencing work and delivering excellence as per our reputation.",
-        "",
-        "Thank you for choosing Pintorex Construction Limited."
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    const introText = [
+        "We are pleased to formally acknowledge receipt of your project requirements and hereby ACCEPT the contract for the above-mentioned construction project."
     ];
-    
-    content.forEach(line => {
-        if (line === "") {
-            yPos += 5;
-        } else {
-            const lines = doc.splitTextToSize(line, pageWidth - 2 * margin);
-            doc.text(lines, margin, yPos);
-            yPos += lines.length * 5;
-        }
+    introText.forEach(lineContent => {
+        // Increased maxWidth to allow sentences to span wider
+        const lines = doc.splitTextToSize(lineContent, _pageWidth - (2 * _margin) - 2); // Reduced by 2 for safety
+        const blockHeight = lines.length * 4.7 + 1; // Adjusted line height for compactness, slightly more due to font increase
+        yPos = _checkAndAddPage(yPos, blockHeight);
+        doc.text(lines, _margin, yPos);
+        yPos += blockHeight;
     });
+    yPos += 6; // Reduced padding after intro section
+
+    // Project details section with styling
+    let projectDetailsText = [
+        `• Project Type: ${data.projectType}`,
+        `• Project Description: ${data.projectDescription || 'As per specifications provided'}`,
+        `• Contract Value: KES ${numberWithCommas(total)}`,
+        `• Estimated Duration: To be confirmed upon project commencement`
+    ];
+    // Calculate required height for project details content
+    const projectDetailsLines = projectDetailsText.flatMap(detail => doc.splitTextToSize(detail, _pageWidth - (2 * _margin) - 10));
+    const projectDetailsContentHeight = projectDetailsLines.length * 4.7; // Height of text lines, adjusted
+    const projectDetailsCalculatedHeight = projectDetailsContentHeight + 8 + 8; // Text height + title padding + bottom padding
+    const projectDetailsRectHeight = Math.max(projectDetailsCalculatedHeight, 40); // Minimum height for visual consistency
     
-    // Signature section
-    yPos += 20;
-    doc.text("Yours faithfully,", margin, yPos);
-    yPos += 30;
-    doc.text("_____________________", margin, yPos);
-    yPos += 5;
-    doc.text("Project Manager", margin, yPos);
-    yPos += 5;
-    doc.text("Pintorex Construction Limited", margin, yPos);
+    yPos = _checkAndAddPage(yPos, projectDetailsRectHeight + 8); // Check for rect + reduced padding
+    doc.setFillColor(..._colors.subtle);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), projectDetailsRectHeight, 'F');
+    let contentYInProjectRect = yPos + 6; // Adjusted start Y within the rectangle
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text("PROJECT DETAILS:", _margin + 5, contentYInProjectRect);
+    contentYInProjectRect += 7; // Adjusted space after title
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    projectDetailsText.forEach(detail => {
+        // Increased maxWidth to allow sentences to span wider within the rect
+        const lines = doc.splitTextToSize(detail, _pageWidth - (2 * _margin) - 10); // -10 for padding within rect
+        doc.text(lines, _margin + 5, contentYInProjectRect);
+        contentYInProjectRect += lines.length * 4.7; // Adjusted line spacing
+    });
+    yPos += projectDetailsRectHeight + 8; // Reduced padding after section
+
+    // Commitments section
+    const commitmentTitleHeight = 10; // Rough estimate for "OUR COMMITMENT..."
+    yPos = _checkAndAddPage(yPos, commitmentTitleHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text("OUR COMMITMENT TO YOU:", _margin, yPos);
+    yPos += 7; // Reduced space after title
+
+    yPos = _checkAndAddPage(yPos, 5); // Check for first commitment item
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    const commitments = [
+        "• Complete the project within the agreed timeline and specifications",
+        "• Maintain the highest standards of workmanship and quality control",
+        "• Comply with all safety regulations, building codes, and industry standards",
+        "• Provide regular progress updates and maintain clear communication",
+        "• Use only approved materials that meet or exceed specified requirements",
+        "• Maintain comprehensive insurance coverage throughout the project duration",
+        "• Ensure site safety and cleanliness at all times",
+        "• Provide warranty coverage as per industry standards"
+    ];
+    commitments.forEach(commitment => {
+        // Increased maxWidth to allow sentences to span wider
+        const lines = doc.splitTextToSize(commitment, _pageWidth - (2 * _margin) - 2); // Reduced by 2 for safety
+        const itemHeight = lines.length * 4.7 + 1; // Adjusted line height for compactness
+        yPos = _checkAndAddPage(yPos, itemHeight);
+        doc.text(lines, _margin, yPos);
+        yPos += itemHeight;
+    });
+    yPos += 6; // Reduced padding after commitments section
+
+    // Next steps section
+    let nextStepsText = [
+        "1. Contract signing and documentation finalization",
+        "2. Project timeline and milestone planning",
+        "3. Site preparation and mobilization of resources"
+    ];
+    // Calculate required height for next steps content
+    const nextStepsLines = nextStepsText.flatMap(step => doc.splitTextToSize(step, _pageWidth - (2 * _margin) - 10));
+    const nextStepsContentHeight = nextStepsLines.length * 4.7; // Height of text lines, adjusted
+    const nextStepsCalculatedHeight = nextStepsContentHeight + 8 + 8; // Text height + title padding + bottom padding
+    const nextStepsRectHeight = Math.max(nextStepsCalculatedHeight, 25); // Minimum height
     
-    doc.save(`Pintorex-Acceptance-Letter-${documentNumber}.pdf`);
+    yPos = _checkAndAddPage(yPos, nextStepsRectHeight + 8); // Check for rect + reduced padding
+    doc.setFillColor(..._colors.subtle);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), nextStepsRectHeight, 'F');
+    let contentYInNextStepsRect = yPos + 6; // Adjusted start Y within the rectangle
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text("NEXT STEPS:", _margin + 5, contentYInNextStepsRect);
+    contentYInNextStepsRect += 7; // Adjusted space after title
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    nextStepsText.forEach(step => {
+        // Increased maxWidth to allow sentences to span wider within the rect
+        doc.text(step, _margin + 5, contentYInNextStepsRect); // Assuming these are naturally short
+        contentYInNextStepsRect += 4.7; // Adjusted spacing between steps
+    });
+    yPos += nextStepsRectHeight + 8; // Reduced padding after section
+
+    // Closing statement
+    yPos = _checkAndAddPage(yPos, 5); // Check for first line of closing
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    const closingText = [
+        "We are excited about the opportunity to work with you and look forward to delivering excellence that exceeds your expectations. Our team is committed to making your construction project a complete success."
+    ];
+    closingText.forEach(line => {
+        // Increased maxWidth to allow sentences to span wider
+        const lines = doc.splitTextToSize(line, _pageWidth - (2 * _margin) - 2); // Reduced by 2 for safety
+        yPos = _checkAndAddPage(yPos, lines.length * 4.7); // Check for each line
+        doc.text(lines, _margin, yPos);
+        yPos += lines.length * 4.7; // Reduced line height
+    });
+    yPos += 8; // Reduced padding
+
+    yPos = _checkAndAddPage(yPos, 5);
+    doc.text("Thank you for choosing Pintorex Construction Limited.", _margin, yPos);
+    yPos += 15; // Reduced padding before signature
+
+    // Signature section with professional styling - CRITICAL FOR FITTING
+    // Calculate precise height needed for all elements within the signature block
+    const calculatedSignatureContentHeight = 
+        (1 * 10) + // "Yours faithfully," (larger font, adjusted from 9.5)
+        18 +        // Space for signature line
+        (1 * 9) +   // "Project Manager" (adjusted from 8.5)
+        (1 * 9.5) + // "Pintorex Construction Limited" (adjusted from 9)
+        (1 * 8) +   // "Direct Line" (adjusted from 7.5)
+        (1 * 8) +   // "Email" (adjusted from 7.5)
+        (4 * 2);    // Additional small vertical padding/spacing between elements
+
+    const signatureRectHeight = Math.max(calculatedSignatureContentHeight, 60); // Ensure minimum height for visual appeal
+    
+    yPos = _checkAndAddPage(yPos, signatureRectHeight + 10); // Check for the entire signature block + some buffer
+    doc.setFillColor(..._colors.subtle);
+    doc.rect(_margin, yPos, _pageWidth - (2 * _margin), signatureRectHeight, 'F');
+
+    let sigBlockContentY = yPos + 10; // Adjusted start Y within the rectangle
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    doc.text("Yours faithfully,", _margin + 5, sigBlockContentY);
+
+    sigBlockContentY += 18; // Space before signature line, precisely adjusted
+    doc.setLineWidth(0.4); // Slightly thinner line
+    doc.setDrawColor(..._colors.secondary);
+    doc.line(_margin + 5, sigBlockContentY, _margin + 80, sigBlockContentY);
+
+    sigBlockContentY += 6; // Reduced space
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9); // Slightly increased
+    doc.setTextColor(..._colors.text);
+    doc.text("Project Manager", _margin + 5, sigBlockContentY);
+
+    sigBlockContentY += 4; // Reduced space
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5); // Slightly increased
+    doc.text("Pintorex Construction Limited", _margin + 5, sigBlockContentY);
+
+    sigBlockContentY += 7; // Reduced space
+    doc.setFontSize(8); // Slightly increased
+    doc.setTextColor(..._colors.secondary);
+    doc.text("Direct Line: +254 769 157174", _margin + 5, sigBlockContentY);
+    sigBlockContentY += 3.5; // Reduced space
+    doc.text("Email: pintorexkenya@gmail.com", _margin + 5, sigBlockContentY);
+
+    // Company seal area (placeholder) - position relative to the *bottom* of the rect, or a fixed relative offset
+    const sealCircleY = yPos + signatureRectHeight - 25; // Adjusted to be higher within the box
+    const sealCircleX = _pageWidth - _margin - 30; // Kept as is, relative to right margin
+    doc.setDrawColor(..._colors.primary);
+    doc.setLineWidth(0.8); // Slightly thinner
+    doc.circle(sealCircleX, sealCircleY, 18, 'S'); // Slightly smaller circle
+    doc.setFontSize(6); // Slightly increased
+    doc.setTextColor(..._colors.primary);
+    doc.text("COMPANY", sealCircleX, sealCircleY - 5, { align: "center" }); // Adjusted Y relative to circle center
+    doc.text("SEAL", sealCircleX, sealCircleY, { align: "center" }); // Adjusted Y
+
+    doc.save(`Pintorex-Contract-Acceptance-${documentNumber}.pdf`);
 }
 
 // 2. Payment Request
