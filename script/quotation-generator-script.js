@@ -935,33 +935,161 @@ function generateAcceptanceLetter(data) {
     doc.save(`Pintorex-Contract-Acceptance-${documentNumber}.pdf`);
 }
 
-// 2. Payment Request
+// 2.Payment Request
 function generatePaymentRequest(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
+
     const documentNumber = generateDocumentNumber('payment');
+
+    const colors = {
+        primary: [31, 41, 55],
+        secondary: [107, 114, 128],
+        accent: [245, 158, 11],
+        text: [17, 24, 39],
+        subtle: [249, 250, 251],
+        lightGray: [243, 244, 246],
+        border: [229, 231, 235]
+    };
+
+    // Header with better spacing and typography
+    function addHeader() {
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, 0, pageWidth, 28, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("PINTOREX", margin, 16);
+        
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text("CONSTRUCTION LIMITED", margin, 22);
+
+        // Better aligned contact info
+        doc.setFontSize(8);
+        const contactInfo = [
+            "Tel: +254 769 157174",
+            "Email: pintorexkenya@gmail.com"
+        ];
+        doc.text(contactInfo, pageWidth - margin, 14, { align: "right" });
+    }
+
+    // Enhanced Footer with refined spacing
+    function addFooter() {
+        const footerY = pageHeight - 18;
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, footerY, pageWidth, 18, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        
+        // Split footer into two lines for better readability
+        doc.text("Pintorex Construction Limited | Building Excellence, Crafting Dreams", 
+                 pageWidth / 2, footerY + 7, { align: "center" });
+        doc.text("+254 769 157174 | pintorexkenya@gmail.com", 
+                 pageWidth / 2, footerY + 13, { align: "center" });
+    }
+
+    // Enhanced page break function
+    function checkPageBreak(currentY, spaceRequired = 15) {
+        if (currentY + spaceRequired > pageHeight - 30) {
+            doc.addPage();
+            addHeader();
+            addFooter();
+            return 40; // Adjusted start position after header
+        }
+        return currentY;
+    }
     
-    addDocumentHeader(doc, "PAYMENT REQUEST", documentNumber);
-    addDocumentFooter(doc);
+    // Start generating the PDF
+    addHeader();
+    addFooter();
     
-    let yPos = 70;
+    let yPos = 40; // Better initial spacing after header
+
+    // Enhanced Main Title Section with refined typography
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("PAYMENT REQUEST", margin, yPos);
     
-    // Date and client info
+    // Enhanced accent line with better proportions
+    doc.setDrawColor(...colors.accent);
+    doc.setLineWidth(1);
+    doc.line(margin, yPos + 5, margin + 80, yPos + 5);
+    
+    yPos += 18; // Better spacing after title
+
+    // Enhanced Invoice Reference & Client Details with improved layout
+    yPos = checkPageBreak(yPos, 50);
+    
+    // Subtle border for the info box
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(...colors.subtle);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 48, 'FD');
+    
+    // Invoice Reference section with better typography
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.primary);
+    doc.text("INVOICE REFERENCE", margin + 8, yPos + 12);
+    
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
+    doc.setTextColor(...colors.text);
+    const invoiceNumber = prompt("Please enter the Invoice Number for this Payment Request:") || "N/A";
+    doc.text(invoiceNumber, pageWidth - margin - 8, yPos + 12, { align: "right" });
+
+    // Separator line within the box
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.2);
+    doc.line(margin + 8, yPos + 18, pageWidth - margin - 8, yPos + 18);
+
+    // Client details with enhanced spacing
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.primary);
+    doc.text("PAYMENT REQUEST DETAILS", margin + 8, yPos + 28);
     
-    yPos += 15;
-    doc.text(`To: ${data.clientName}`, margin, yPos);
-    yPos += 10;
-    doc.text(`Project: ${data.projectType}`, margin, yPos);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colors.text);
     
-    yPos += 20;
+    const clientDetails = [
+        `Client: ${data.clientName}`,
+        `Project: ${data.projectType}`,
+        `Request Date: ${new Date().toLocaleDateString('en-GB')}`
+    ];
     
-    // Calculate totals (using same logic as quotation)
-    const materials = JSON.parse(data.materials);
+    clientDetails.forEach((detail, index) => {
+        doc.text(detail, margin + 8, yPos + 35 + (index * 4));
+    });
+
+    yPos += 60; // Better spacing after info box
+
+    // Enhanced Summary Section with refined typography
+    yPos = checkPageBreak(yPos, 20);
+    
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("PAYMENT BREAKDOWN", margin, yPos);
+    
+    // Enhanced accent line
+    doc.setDrawColor(...colors.accent);
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos + 6, margin + 85, yPos + 6);
+    
+    yPos += 16; // Better spacing after section title
+
+    // Calculate totals (same logic, better presentation)
+    const materials = JSON.parse(data.materials || '[]');
     const materialsTotal = materials.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0);
     let labor = data.laborType === 'custom' ? parseFloat(data.laborCost) || 0 : materialsTotal * (parseFloat(data.laborType) / 100);
     const subtotal = materialsTotal + labor;
@@ -969,109 +1097,522 @@ function generatePaymentRequest(data) {
     const contingency = subtotal * (parseFloat(data.contingencyPercentage) / 100);
     const total = subtotal + vat + contingency;
     
-    // Payment request table
+    // Enhanced Payment Summary Table with better styling
     doc.autoTable({
         startY: yPos,
         head: [["Description", "Amount (KES)"]],
         body: [
             ["Materials Cost", numberWithCommas(materialsTotal)],
-            ["Labor Cost", numberWithCommas(labor)],
+            ["Labor Services", numberWithCommas(labor)], 
             ["Subtotal", numberWithCommas(subtotal)],
             [`VAT (${data.vatPercentage}%)`, numberWithCommas(vat)],
-            [`Contingency (${data.contingencyPercentage}%)`, numberWithCommas(contingency)],
-            ["TOTAL AMOUNT DUE", numberWithCommas(total)]
+            [`Contingency (${data.contingencyPercentage}%)`, numberWithCommas(contingency)]
         ],
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [31, 41, 55] },
+        styles: {
+            fontSize: 9.5,
+            textColor: [...colors.text],
+            cellPadding: { top: 4, right: 6, bottom: 4, left: 6 },
+            lineWidth: 0.1,
+            lineColor: [...colors.border]
+        },
+        headStyles: {
+            fillColor: [...colors.primary],
+            textColor: [255, 255, 255],
+            fontSize: 10.5,
+            fontStyle: 'bold',
+            cellPadding: { top: 6, right: 6, bottom: 6, left: 6 }
+        },
         columnStyles: {
-            0: { cellWidth: 120 },
-            1: { cellWidth: 60, halign: 'right' }
+            0: { cellWidth: 120, fontStyle: 'normal' },
+            1: { cellWidth: 60, halign: 'right', fontStyle: 'normal' }
+        },
+        alternateRowStyles: {
+            fillColor: [...colors.lightGray]
+        },
+        margin: { left: margin, right: margin },
+        theme: 'grid',
+        didDrawPage: function(data) {
+            addHeader();
+            addFooter();
         }
     });
     
-    yPos = doc.lastAutoTable.finalY + 20;
+    yPos = doc.lastAutoTable.finalY + 8;
+
+    // Enhanced Total Amount Due with premium styling
+    yPos = checkPageBreak(yPos, 25);
     
-    doc.text([
-        "Payment Terms: Net 30 days",
-        "Bank Details:",
-        "Bank: [Bank Name]",
-        "Account: [Account Number]",
-        "Account Name: Pintorex Construction Limited"
-    ], margin, yPos);
+    // Gradient-like effect with multiple rectangles
+    doc.setFillColor(...colors.accent);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 22, 'F');
     
+    // Border for the total box
+    doc.setDrawColor(...colors.primary);
+    doc.setLineWidth(0.5);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 22, 'D');
+    
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("TOTAL AMOUNT DUE:", margin + 8, yPos + 14);
+    
+    doc.setFontSize(14);
+    doc.text(`KES ${numberWithCommas(total)}`, pageWidth - margin - 8, yPos + 14, { align: "right" });
+
+    yPos += 35; // Better spacing after total
+
+    // Enhanced Payment Information Section
+    yPos = checkPageBreak(yPos, 55);
+    
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("PAYMENT INFORMATION", margin, yPos);
+    
+    doc.setDrawColor(...colors.accent);
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos + 6, margin + 90, yPos + 6);
+    
+    yPos += 16;
+
+    // Enhanced payment info box with better structure
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(...colors.subtle);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 50, 'FD');
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colors.primary);
+    doc.text("PAYMENT TERMS", margin + 8, yPos + 10);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.text);
+    doc.text("Payment is due Net 30 days from the date of this request.", margin + 8, yPos + 16);
+    
+    // Bank details section
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colors.primary);
+    doc.text("BANK DETAILS", margin + 8, yPos + 26);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.text);
+    
+    const bankDetails = [
+        "Bank Name: [Bank Name - e.g., Equity Bank Kenya Ltd]",
+        "Account Holder: Pintorex Construction Limited",
+        "Account Number: [Your Account Number - e.g., 1234567890]"
+    ];
+    
+    bankDetails.forEach((detail, index) => {
+        doc.text(detail, margin + 8, yPos + 32 + (index * 5));
+    });
+
+    yPos += 65; // Better spacing after payment info
+
+    // Enhanced Authorization Section with professional styling
+    yPos = checkPageBreak(yPos, 45);
+    
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("AUTHORIZATION", margin, yPos);
+    
+    doc.setDrawColor(...colors.accent);
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos + 6, margin + 70, yPos + 6);
+    
+    yPos += 18;
+
+    // Signature box with enhanced styling
+    doc.setDrawColor(...colors.border);
+    doc.setLineWidth(0.3);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin, yPos, 120, 35, 'FD');
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colors.text);
+    doc.text("Prepared By:", margin + 8, yPos + 10);
+    
+    // Signature line with better styling
+    doc.setDrawColor(...colors.secondary);
+    doc.setLineWidth(0.4);
+    doc.line(margin + 8, yPos + 20, margin + 85, yPos + 20);
+    
+    // Enhanced signature details
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.primary);
+    doc.text("Project Manager", margin + 8, yPos + 26);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.text);
+    doc.text("Pintorex Construction Limited", margin + 8, yPos + 31);
+    
+    // Date with better formatting
+    doc.setFontSize(8.5);
+    doc.setTextColor(...colors.secondary);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, margin + 90, yPos + 10);
+
+    // Save with enhanced filename
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
 
 // 3. Invoice
+// Enhanced Professional Pintorex Invoice Generator
+// Consistent with quotation design, production-ready
+
 function generateInvoice(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
-    const documentNumber = generateDocumentNumber('invoice');
+
+    // Professional color palette matching quotation
+    const colors = {
+        primary: [31, 41, 55],
+        secondary: [107, 114, 128],
+        accent: [245, 158, 11],
+        text: [17, 24, 39],
+        subtle: [249, 250, 251],
+        lightGray: [229, 231, 235]
+    };
+
+    const documentNumber = generateDocumentNumber();
+    let currentPage = 1;
+    let yPos = 0;
+
+    function addHeader() {
+        // Header background
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, 0, pageWidth, 25, 'F');
+        
+        // Company name
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("PINTOREX", margin, 15);
+        
+        // Company subtitle
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text("CONSTRUCTION LIMITED", margin, 20);
+
+        // Contact info - right aligned
+        doc.setFontSize(8);
+        doc.text([
+            "Tel: +254 769 157174",
+            "Email: pintorexkenya@gmail.com"
+        ], pageWidth - margin, 15, { align: "right" });
+
+        return 30;
+    }
+
+    function addFooter() {
+        const footerY = pageHeight - 15;
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, footerY, pageWidth, 15, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.text([
+            "Pintorex Construction Limited | Building Excellence, Crafting Dreams",
+            "+254 769 157174 | pintorexkenya@gmail.com"
+        ], pageWidth / 2, footerY + 6, { align: "center" });
+    }
+
+    function checkPageBreak(height) {
+        if (yPos + height > pageHeight - 25) {
+            doc.addPage();
+            currentPage++;
+            yPos = addHeader();
+            addFooter();
+        }
+    }
+
+    // Initialize document
+    yPos = addHeader();
+    addFooter();
+
+    // Document title section
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("INVOICE", margin, yPos);
     
-    addDocumentHeader(doc, "INVOICE", documentNumber);
-    addDocumentFooter(doc);
+    doc.setDrawColor(...colors.accent);
+    doc.setLineWidth(0.5);
+    doc.line(margin, yPos + 4, margin + 35, yPos + 4);
     
-    let yPos = 70;
+    yPos += 15;
+
+    // Invoice details box
+    checkPageBreak(30);
+    doc.setFillColor(...colors.subtle);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 28, 'F');
     
-    // Invoice details
+    // Left side - Client info
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...colors.text);
+    doc.text("PREPARED FOR:", margin + 8, yPos + 10);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text([
+        data.clientName || "Client Name",
+        "Project Type: " + (data.projectType || "Construction Project")
+    ], margin + 8, yPos + 18);
+
+    // Right side - Invoice details
+    const rightX = pageWidth - margin - 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text([
+        "INVOICE NO: " + documentNumber,
+        "DATE: " + new Date().toLocaleDateString('en-GB'),
+        "DUE DATE: " + new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-GB')
+    ], rightX, yPos + 10, { align: "right" });
+
+    yPos += 35;
+
+    // Project scope section
+    checkPageBreak(20);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("BILL TO:", margin, yPos);
-    doc.text(`Invoice Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
+    doc.setTextColor(...colors.primary);
+    doc.text("PROJECT SCOPE", margin, yPos);
     
-    yPos += 5;
-    doc.text(`Due Date: ${new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
+    yPos += 8;
     
-    yPos += 10;
+    doc.setFillColor(...colors.subtle);
+    const scopeHeight = 15;
+    doc.rect(margin, yPos, pageWidth - (2 * margin), scopeHeight, 'F');
+    
     doc.setFont("helvetica", "normal");
-    doc.text([
-        data.clientName,
-        `Project: ${data.projectType}`
-    ], margin, yPos);
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.text);
+    const description = data.projectDescription || "Construction Services";
+    const descriptionLines = doc.splitTextToSize(description, pageWidth - (2 * margin) - 16);
+    doc.text(descriptionLines, margin + 8, yPos + 8);
+
+    yPos += scopeHeight + 10;
+
+    // Materials breakdown header
+    checkPageBreak(15);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...colors.primary);
+    doc.text("MATERIALS BREAKDOWN", margin, yPos);
     
-    yPos += 25;
+    yPos += 8;
+
+    // Calculate totals
+    const totals = calculateInvoiceTotals(data);
     
-    // Invoice items table
-    const materials = JSON.parse(data.materials);
-    const materialsTotal = materials.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0);
-    let labor = data.laborType === 'custom' ? parseFloat(data.laborCost) || 0 : materialsTotal * (parseFloat(data.laborType) / 100);
-    const subtotal = materialsTotal + labor;
-    const vat = subtotal * (parseFloat(data.vatPercentage) / 100);
-    const contingency = subtotal * (parseFloat(data.contingencyPercentage) / 100);
-    const total = subtotal + vat + contingency;
+    // Prepare table data
+    const materials = JSON.parse(data.materials || '[]');
+    const tableData = [];
+    let itemNumber = 1;
     
-    doc.autoTable({
-        startY: yPos,
-        head: [["Item", "Description", "Amount (KES)"]],
-        body: [
-            ["1", "Materials Supply", numberWithCommas(materialsTotal)],
-            ["2", "Labor Services", numberWithCommas(labor)],
-            ["3", `VAT (${data.vatPercentage}%)`, numberWithCommas(vat)],
-            ["4", `Contingency (${data.contingencyPercentage}%)`, numberWithCommas(contingency)]
-        ],
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [31, 41, 55] },
-        columnStyles: {
-            0: { cellWidth: 20, halign: 'center' },
-            1: { cellWidth: 120 },
-            2: { cellWidth: 50, halign: 'right' }
-        }
+    // Add materials
+    materials.forEach(item => {
+        tableData.push([
+            itemNumber.toString(),
+            item.name || `Material ${itemNumber}`,
+            item.unit || 'PC',
+            formatNumber(item.quantity || 1),
+            formatNumber(item.unitPrice || 0),
+            formatNumber((item.quantity || 1) * (item.unitPrice || 0))
+        ]);
+        itemNumber++;
     });
     
-    yPos = doc.lastAutoTable.finalY + 5;
+    // Add labor if applicable
+    if (totals.labor > 0) {
+        tableData.push([
+            itemNumber.toString(),
+            'Labor Services',
+            'LS',
+            '1',
+            formatNumber(totals.labor),
+            formatNumber(totals.labor)
+        ]);
+    }
+
+    // Materials table - with better centered alignment and responsive sizing
+    const tableWidth = pageWidth - (2 * margin) - 10; // Total available width
+    doc.autoTable({
+        startY: yPos,
+        head: [["No.", "Item Description", "Unit", "Qty", "Unit Price (KES)", "Amount (KES)"]],
+        body: tableData,
+        styles: {
+            fontSize: 8,
+            textColor: [...colors.text],
+            cellPadding: 3,
+            lineColor: [...colors.lightGray],
+            lineWidth: 0.1
+        },
+        headStyles: {
+            fillColor: [...colors.primary],
+            textColor: [255, 255, 255],
+            fontSize: 9,
+            fontStyle: 'bold',
+            cellPadding: 4
+        },
+        columnStyles: {
+            0: { cellWidth: tableWidth * 0.08, halign: 'center' }, // 8% - No.
+            1: { cellWidth: tableWidth * 0.40, halign: 'left' },   // 40% - Item Description
+            2: { cellWidth: tableWidth * 0.10, halign: 'center' }, // 10% - Unit
+            3: { cellWidth: tableWidth * 0.12, halign: 'right' },  // 12% - Qty
+            4: { cellWidth: tableWidth * 0.15, halign: 'right' },  // 15% - Unit Price
+            5: { cellWidth: tableWidth * 0.15, halign: 'right' }   // 15% - Amount
+        },
+        alternateRowStyles: {
+            fillColor: [250, 250, 250]
+        },
+        margin: { left: margin + 5, right: margin + 5 }, // Better centered positioning
+        theme: 'grid',
+        tableWidth: 'wrap',
+        didDrawPage: function(data) {
+            if (data.pageNumber > 1) {
+                addHeader();
+                addFooter();
+            }
+        }
+    });
+
+    yPos = doc.lastAutoTable.finalY + 10;
+
+    // Calculate space needed for financial summary
+    const summaryHeight = 75; // Reduced height for better fit
+    const availableSpace = pageHeight - 25 - yPos; // Space before footer
+
+    // If not enough space, add page break
+    if (availableSpace < summaryHeight) {
+        doc.addPage();
+        currentPage++;
+        yPos = addHeader();
+        addFooter();
+    }
+
+    // Financial summary
+    // Summary header
+    doc.setFillColor(...colors.primary);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 12, 'F'); // Reduced height
     
-    // Total
-    doc.setFillColor(245, 158, 11);
-    doc.rect(margin + 90, yPos, 100, 15, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.text("TOTAL:", margin + 95, yPos + 10);
-    doc.text(`KES ${numberWithCommas(total)}`, margin + 185, yPos + 10, { align: "right" });
+    doc.setFontSize(9); // Reduced font size
+    doc.text("FINANCIAL SUMMARY", margin + 8, yPos + 8);
+
+    yPos += 12;
+
+    // Summary content
+    doc.setFillColor(...colors.subtle);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 45, 'F'); // Reduced height
+
+    let summaryY = yPos + 10;
+    doc.setTextColor(...colors.text);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8); // Reduced font size
     
+    const summaryItems = [
+        ["Materials Total:", `KES ${formatNumber(totals.materialsTotal)}`],
+        ["Labor Cost:", `KES ${formatNumber(totals.labor)}`],
+        ["Subtotal:", `KES ${formatNumber(totals.subtotal)}`],
+        [`VAT (${totals.vatPercentage}%):`, `KES ${formatNumber(totals.vat)}`],
+        [`Contingency (${totals.contingencyPercentage}%):`, `KES ${formatNumber(totals.contingency)}`]
+    ];
+
+    summaryItems.forEach(([label, value]) => {
+        doc.text(label, margin + 8, summaryY);
+        doc.text(value, pageWidth - margin - 8, summaryY, { align: "right" });
+        summaryY += 8; // Reduced line spacing
+    });
+
+    yPos += 45;
+
+    // Total amount
+    doc.setFillColor(...colors.accent);
+    doc.rect(margin, yPos, pageWidth - (2 * margin), 15, 'F'); // Reduced height
+    doc.setTextColor(...colors.primary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10); // Reduced font size
+    doc.text("TOTAL AMOUNT:", margin + 8, yPos + 10);
+    doc.setFontSize(11); // Reduced font size
+    doc.text(`KES ${formatNumber(totals.total)}`, pageWidth - margin - 8, yPos + 10, { align: "right" });
+
+    yPos += 20; // Reduced spacing
+
+    // Legal disclaimer - positioned right below financial summary and spans its width
+    doc.setTextColor(...colors.secondary);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7); // Reduced font size
+    
+    const disclaimerText = "This invoice is issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya. Payment terms: Net 30 days.";
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, pageWidth - (2 * margin));
+    doc.text(disclaimerLines, margin, yPos);
+
+    // Save the document
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
 
+function generateDocumentNumber() {
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2);
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `PNX-INV-${year}${month}${day}-${random}`;
+}
+
+function calculateInvoiceTotals(data) {
+    const materials = JSON.parse(data.materials || '[]');
+    const materialsTotal = materials.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0);
+    
+    let labor = 0;
+    if (data.laborType === 'custom') {
+        labor = parseFloat(data.laborCost) || 0;
+    } else {
+        labor = materialsTotal * (parseFloat(data.laborType) / 100);
+    }
+    
+    const subtotal = materialsTotal + labor;
+    const vatPercentage = parseFloat(data.vatPercentage) || 16;
+    const contingencyPercentage = parseFloat(data.contingencyPercentage) || 5;
+    
+    const vat = subtotal * (vatPercentage / 100);
+    const contingency = subtotal * (contingencyPercentage / 100);
+    const total = subtotal + vat + contingency;
+    
+    return {
+        materialsTotal,
+        labor,
+        subtotal,
+        vat,
+        contingency,
+        total,
+        vatPercentage,
+        contingencyPercentage
+    };
+}
+
+function formatNumber(num) {
+    return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+// Export function for production use
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { generateInvoice };
+}
 // 4. Delivery Note
 function generateDeliveryNote(data) {
     const { jsPDF } = window.jspdf;
