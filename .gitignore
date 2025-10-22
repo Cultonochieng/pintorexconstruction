@@ -1,2 +1,8 @@
 # Local Netlify folder
 .netlify
+
+#node-modules & dependencies
+node_modules/
+package-lock.json
+*.log
+
