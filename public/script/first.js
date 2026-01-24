@@ -279,11 +279,15 @@ function initMap() {
         map = null;
     }
 
-    // Initialize the map
+    // Migori Town coordinates
+    const migoriCoords = [-1.0634, 34.4731];
+
+    // Initialize the map centered on Migori Town
     map = L.map('map', {
         zoomControl: true,
-        attributionControl: true
-    }).setView([-1.069371, 34.469008], 13);
+        attributionControl: true,
+        scrollWheelZoom: false
+    }).setView(migoriCoords, 15);
 
     // Add the tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -292,10 +296,19 @@ function initMap() {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
-    // Add a marker
-    L.marker([-1.0635, 34.4731])
+    // Custom marker icon with construction orange color
+    const customIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<div style="background-color: #F97316; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 30],
+        popupAnchor: [0, -30]
+    });
+
+    // Add a marker for Pintorex Construction
+    L.marker(migoriCoords, { icon: customIcon })
         .addTo(map)
-        .bindPopup('Pintorex Construction Limited')
+        .bindPopup('<strong>Pintorex Construction Limited</strong><br>Migori Town, Migori County, Kenya<br><a href="https://www.google.com/maps?q=-1.0634,34.4731" target="_blank">Get Directions</a>')
         .openPopup();
 }
 

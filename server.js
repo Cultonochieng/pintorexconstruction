@@ -12,7 +12,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy for Glitch
+// Trust proxy for Render
 app.set('trust proxy', 1);
 
 // Security headers with helmet (configured for our needs)
@@ -50,7 +50,7 @@ app.use(helmet({
 // CORS configuration
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? ['https://pintorexconstruction.glitch.me', 'https://www.pintorexconstruction.com']
+        ? ['https://pintorexconstruction.onrender.com', 'https://www.pintorexconstruction.com']
         : true,
     credentials: true
 }));
@@ -234,7 +234,7 @@ app.post('/api/contact', rateLimit({
 // UTILITY ENDPOINTS
 // ============================================================================
 
-// Health check for Glitch
+// Health check for Render
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
