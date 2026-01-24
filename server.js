@@ -175,7 +175,7 @@ const requireAuth = (req, res, next) => {
 
 // Protected PDF download endpoint
 app.get('/api/documents/company-profile', requireAuth, (req, res) => {
-    const filePath = path.join(__dirname, 'public', 'docs', 'Company Profile Pintorex.pdf');
+    const filePath = path.join(__dirname, 'public', 'docs', 'company profile pintorex.pdf');
     res.download(filePath, 'Pintorex-Company-Profile.pdf', (err) => {
         if (err) {
             console.error('Download error:', err);
