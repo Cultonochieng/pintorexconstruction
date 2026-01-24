@@ -303,9 +303,14 @@
     <!-- Footer -->
     <footer class="bg-gray-800 text-white py-4 mt-8">
         <div class="container mx-auto px-4 text-center">
-            <p class="text-gray-400 text-sm">&copy; 2024 Pintorex Construction Limited. Internal Use Only.</p>
+            <p class="text-gray-400 text-sm">&copy; <span id="currentYear"></span> Pintorex Construction Limited. Internal Use Only.</p>
         </div>
     </footer>
+
+    <!-- Dynamic Year Script -->
+    <script>
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+    </script>
 
     <!-- Toast notification -->
     <div id="toast" class="toast" role="alert" aria-live="polite"></div>

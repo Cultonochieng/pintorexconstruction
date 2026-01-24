@@ -11,6 +11,17 @@ AOS.init({
 });
 
 // ============================================================================
+// DYNAMIC COPYRIGHT YEAR
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    const yearElement = document.getElementById('currentYear');
+    if (yearElement) {
+        yearElement.textContent = new Date().getFullYear();
+    }
+});
+
+// ============================================================================
 // TOAST NOTIFICATION SYSTEM
 // ============================================================================
 
