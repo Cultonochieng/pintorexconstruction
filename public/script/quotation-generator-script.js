@@ -1,5 +1,7 @@
-// Initialize the encrypted password
-window.encryptedPassword = "AAAAAAAAAAB9JgwcFgA5EBokAAEaL0ZVTGNVTQ==";
+// ============================================================================
+// PINTOREX QUOTATION GENERATOR
+// Secure server-side authentication
+// ============================================================================
 
 // ============================================================================
 // DOCUMENT REGISTRY & NUMBERING SYSTEM
@@ -387,30 +389,21 @@ const ModalUI = {
 };
 
 // ============================================================================
-// ENCRYPTION AND DECRYPTION FUNCTIONS
+// TOAST NOTIFICATION SYSTEM
 // ============================================================================
 
-function xorCrypt(input, key) {
-    let output = '';
-    for (let i = 0; i < input.length; ++i) {
-        output += String.fromCharCode(input.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    }
-    return output;
-}
-
-function b64Encode(str) {
-    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
-}
-
-function b64Decode(str) {
-    return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-}
-
-function decryptPassword(encryptedPassword) {
-    const key = "PintorexSecretKey";
-    const decoded = b64Decode(encryptedPassword);
-    return xorCrypt(decoded, key);
-}
+const Toast = {
+    show(message, type = 'info', duration = 3000) {
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+        toast.textContent = message;
+        toast.className = `toast ${type} show`;
+        setTimeout(() => { toast.classList.remove('show'); }, duration);
+    },
+    success(message) { this.show(message, 'success'); },
+    error(message) { this.show(message, 'error'); },
+    info(message) { this.show(message, 'info'); }
+};
 
 // ============================================================================
 // MATERIAL ROW FUNCTIONS
@@ -617,22 +610,68 @@ document.addEventListener('DOMContentLoaded', function() {
     settingsButton.addEventListener('click', () => ModalUI.showSettings());
     document.body.appendChild(settingsButton);
 
-    // Login form
+    // Login form - SERVER-SIDE AUTHENTICATION
     const loginForm = document.getElementById('loginForm');
     const loginSection = document.getElementById('loginSection');
     const quotationSection = document.getElementById('quotationSection');
 
     if (loginForm) {
-        loginForm.addEventListener('submit', function(e) {
+        loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            const enteredPassword = document.getElementById('password').value;
-            const correctPassword = decryptPassword(window.encryptedPassword);
 
-            if (enteredPassword === correctPassword) {
-                loginSection.classList.add('hidden');
-                quotationSection.classList.remove('hidden');
-            } else {
-                alert('Incorrect password. Please try again.');
+            const passwordInput = document.getElementById('password');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginText = document.getElementById('loginText');
+            const loginSpinner = document.getElementById('loginSpinner');
+            const loginError = document.getElementById('loginError');
+
+            const enteredPassword = passwordInput.value;
+
+            if (!enteredPassword) {
+                if (loginError) {
+                    loginError.textContent = 'Please enter a password';
+                    loginError.classList.remove('hidden');
+                }
+                return;
+            }
+
+            // Show loading state
+            if (loginBtn) loginBtn.disabled = true;
+            if (loginText) loginText.classList.add('hidden');
+            if (loginSpinner) loginSpinner.classList.remove('hidden');
+            if (loginError) loginError.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: enteredPassword })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    loginSection.classList.add('hidden');
+                    quotationSection.classList.remove('hidden');
+                    Toast.success('Login successful');
+                } else {
+                    if (loginError) {
+                        loginError.textContent = data.error || 'Invalid password';
+                        loginError.classList.remove('hidden');
+                    }
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            } catch (error) {
+                if (loginError) {
+                    loginError.textContent = 'Network error. Please try again.';
+                    loginError.classList.remove('hidden');
+                }
+            } finally {
+                // Reset button state
+                if (loginBtn) loginBtn.disabled = false;
+                if (loginText) loginText.classList.remove('hidden');
+                if (loginSpinner) loginSpinner.classList.add('hidden');
             }
         });
     }

@@ -1,8 +1,49 @@
-# Local Netlify folder
-.netlify
-
-#node-modules & dependencies
+# Dependencies
 node_modules/
 package-lock.json
-*.log
 
+# Environment variables (NEVER commit these)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build output
+dist/
+build/
+coverage/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# Netlify (if still used)
+.netlify/
+
+# Claude files
+.claude/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Cache
+.cache/
+.npm/

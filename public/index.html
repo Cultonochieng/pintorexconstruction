@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Pintorex Construction Limited - Building excellence, crafting dreams. Expert construction, renovation, and design services in Migori, Kenya.">
+    <meta name="keywords" content="construction, renovation, design, Migori, Kenya, Pintorex">
+    <meta name="author" content="Pintorex Construction Limited">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="images/favicon_io/favicon.ico">
+    <link rel="apple-touch-icon" href="images/favicon_io/apple-touch-icon.png">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.pintorexconstruction.com/">
+    <meta property="og:title" content="Pintorex Construction Limited">
+    <meta property="og:description" content="Building excellence, crafting dreams. Expert construction, renovation, and design services in Migori, Kenya.">
+    <meta property="og:image" content="https://www.pintorexconstruction.com/og-image.jpg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="Pintorex Construction Limited">
+    <meta property="twitter:description" content="Building excellence, crafting dreams. Expert construction, renovation, and design services in Migori, Kenya.">
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#3B82F6">
+
+    <title>Pintorex Construction Limited</title>
+
+    <!-- Stylesheets -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick-theme.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+
+    <style>
+        /* Skip to content link for accessibility */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #3B82F6;
+            color: white;
+            padding: 8px 16px;
+            z-index: 100;
+            transition: top 0.3s;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+
+        /* Focus styles for accessibility */
+        a:focus, button:focus, input:focus, select:focus, textarea:focus {
+            outline: 2px solid #3B82F6;
+            outline-offset: 2px;
+        }
+
+        /* Hero pattern background */
+        .hero-pattern {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23FFFFFF' fill-opacity='0.1'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3Cpath d='M6 5V0H5v5H0v1h5v94h1V6h94V5H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+
+        /* Testimonials carousel animation */
+        @keyframes scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(calc(-96rem - 6rem)); }
+        }
+        .animate-scroll {
+            animation: scroll 30s linear infinite;
+        }
+        .testimonials-carousel:hover {
+            animation-play-state: paused;
+        }
+
+        /* Hero text shadow for readability */
+        .hero-text-shadow {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Toast notification styles */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast.success { background: #10B981; }
+        .toast.error { background: #EF4444; }
+        .toast.info { background: #3B82F6; }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3B82F6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Carousel navigation */
+        .carousel-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s;
+        }
+        .carousel-nav:hover {
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .carousel-nav.prev { left: 10px; }
+        .carousel-nav.next { right: 10px; }
+
+        /* Mobile responsive hero */
+        @media (max-width: 768px) {
+            #home h1 { font-size: 2rem; }
+            #home p { font-size: 1rem; }
+            .hero-carousel { height: 200px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
+    <!-- Skip to content link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Header -->
+    <header id="header" class="bg-white dark:bg-gray-800 shadow-md fixed w-full z-50 transition-all duration-300">
+        <div class="container mx-auto px-6 py-3">
+            <div class="flex justify-between items-center">
+                <a href="#home" class="text-3xl font-bold text-blue-600 hover:text-blue-700 transition duration-300">Pintorex</a>
+                <nav class="hidden md:flex space-x-4" aria-label="Main navigation">
+                    <a href="#home" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Home</a>
+                    <a href="#services" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Services</a>
+                    <a href="#projects" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Projects</a>
+                    <a href="#testimonials" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Testimonials</a>
+                    <a href="#quote" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Quote</a>
+                    <a href="#contact" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Contact</a>
+                    <a href="quotation-generator.html" class="text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300">Quotation Generator</a>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <button id="themeToggle" aria-label="Toggle dark mode" class="w-6 h-6 text-gray-800 dark:text-gray-200">
+                        <svg class="hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                        <svg class="dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
+                    <button id="mobile-menu-button" class="md:hidden text-gray-500 hover:text-gray-600" aria-label="Toggle mobile menu" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" class="h-6 w-6 fill-current">
+                            <path fill-rule="evenodd" d="M4 5h16a1 1 0 0 1 0 2H4a1 1 0 1 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="md:hidden bg-white dark:bg-gray-800 shadow-md fixed w-full z-40 top-16 transition-all duration-300 transform -translate-x-full" aria-hidden="true">
+        <nav class="container mx-auto px-6 py-3" aria-label="Mobile navigation">
+            <a href="#home" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Home</a>
+            <a href="#services" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Services</a>
+            <a href="#projects" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Projects</a>
+            <a href="#testimonials" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Testimonials</a>
+            <a href="#quote" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Quote</a>
+            <a href="#contact" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Contact</a>
+            <a href="quotation-generator.html" class="block text-gray-700 dark:text-gray-300 hover:text-blue-600 transition duration-300 py-2">Quotation Generator</a>
+        </nav>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="passwordModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+            <button id="closeModal" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700" aria-label="Close modal">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            <div class="mt-3 text-center">
+                <h3 id="modalTitle" class="text-lg leading-6 font-medium text-gray-900 dark:text-white">Confidential Document Access</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                        This document contains sensitive information. Please enter the provided password to access.
+                    </p>
+                    <label for="pdfPassword" class="sr-only">Password</label>
+                    <input type="password" id="pdfPassword" class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm px-3 py-2" placeholder="Enter password" autocomplete="off">
+                    <p id="passwordError" class="text-red-500 text-sm mt-2 hidden"></p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="submitPassword" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-700 transition duration-300">
+                        <span id="submitText">Access Document</span>
+                        <span id="submitSpinner" class="hidden"><span class="spinner"></span>Verifying...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" role="main">
+        <!-- Hero Section -->
+        <section id="home" class="section relative pt-24 pb-32 bg-gradient-to-r from-blue-600 to-indigo-700 text-white min-h-screen flex items-center hero-pattern overflow-hidden">
+            <div class="absolute inset-0">
+                <video autoplay loop muted playsinline class="w-full h-full object-cover opacity-20">
+                    <source src="images/bb.mp4" type="video/mp4">
+                </video>
+            </div>
+            <div class="container mx-auto px-6 relative z-10">
+                <div class="flex flex-col md:flex-row items-center">
+                    <div class="md:w-1/2 mb-8 md:mb-0" data-aos="fade-right">
+                        <h1 class="text-3xl md:text-5xl lg:text-6xl font-bold mb-4 leading-tight text-white hero-text-shadow">Pintorex Construction Limited</h1>
+                        <p class="text-xl mb-6 text-gray-100 hero-text-shadow">Building Excellence, Crafting Dreams</p>
+                        <div class="flex flex-wrap gap-4">
+                            <a href="#quote" class="bg-white text-blue-600 py-3 px-8 rounded-full font-semibold hover:bg-gray-100 transition duration-300 inline-block">Request a Quote</a>
+                            <button id="downloadBtn" class="bg-transparent border-2 border-white text-white py-3 px-8 rounded-full font-semibold hover:bg-white hover:text-blue-600 transition duration-300 inline-block">Download Company Profile</button>
+                        </div>
+                    </div>
+                    <div class="md:w-1/2" data-aos="fade-left">
+                        <div class="relative w-full h-64 md:h-96 overflow-hidden rounded-lg shadow-2xl">
+                            <div class="hero-carousel w-full h-full">
+                                <img id="carouselImage" class="w-full h-full object-cover" src="images/1.jpeg" alt="Project showcase">
+                            </div>
+                            <button class="carousel-nav prev" aria-label="Previous image">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                                </svg>
+                            </button>
+                            <button class="carousel-nav next" aria-label="Next image">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Section -->
+        <section id="services" class="section py-16 bg-white dark:bg-gray-900">
+            <div class="container mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center mb-12 text-gray-800 dark:text-white" data-aos="fade-up">Our Services</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Construction -->
+                    <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="100">
+                        <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-2 text-gray-800 dark:text-white">Construction</h3>
+                        <p class="text-gray-600 dark:text-gray-300">Expert construction services for residential and commercial projects, built to last.</p>
+                    </div>
+                    <!-- Renovation -->
+                    <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="200">
+                        <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-2 text-gray-800 dark:text-white">Renovation</h3>
+                        <p class="text-gray-600 dark:text-gray-300">Transform your space with our innovative renovation and remodeling solutions.</p>
+                    </div>
+                    <!-- Design -->
+                    <div class="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg shadow-md transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="300">
+                        <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold mb-2 text-gray-800 dark:text-white">Design</h3>
+                        <p class="text-gray-600 dark:text-gray-300">Cutting-edge architectural and interior design services to bring your vision to life.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Projects Section -->
+        <section id="projects" class="section py-16 bg-gray-100 dark:bg-gray-800">
+            <div class="container mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center mb-12 text-gray-800 dark:text-white" data-aos="fade-up">Our Projects</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Project Cards -->
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="100">
+                        <div class="relative overflow-hidden">
+                            <img src="images/58.jpeg" alt="Ong'er Market Stalls" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Ong'er Market Stalls</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Construction of 10 market stalls for the Migori County Government.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="200">
+                        <div class="relative overflow-hidden">
+                            <img src="images/oree.jpeg" alt="Ore Dispensary" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Ore Dispensary</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Construction of a new dispensary for the Migori County Government Hospital.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="300">
+                        <div class="relative overflow-hidden">
+                            <img src="images/79.jpeg" alt="Ombo Kowiti Maternity Ward" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Ombo Kowiti Maternity Ward</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Construction of a maternity ward for the Migori County Government.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="400">
+                        <div class="relative overflow-hidden">
+                            <img src="images/12door.png" alt="Kakrao Technical Institute Latrine" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Kakrao Technical Institute</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Construction of a 12-door pit latrine for Kakrao Technical Training Institute.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="500">
+                        <div class="relative overflow-hidden">
+                            <img src="images/es.jpeg" alt="Engineering Shade" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Engineering Shade</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Construction of an engineering shade for Kakrao Technical Training Institute.</p>
+                        </div>
+                    </div>
+                    <div class="bg-white dark:bg-gray-700 rounded-lg overflow-hidden shadow-md transition duration-300 hover:shadow-xl group" data-aos="fade-up" data-aos-delay="600">
+                        <div class="relative overflow-hidden">
+                            <img src="images/146.jpeg" alt="Residential and Rental Houses" class="w-full h-48 object-cover transition duration-300 group-hover:scale-105">
+                        </div>
+                        <div class="p-6">
+                            <h3 class="font-semibold text-lg mb-2 text-gray-800 dark:text-white">Residential & Rental Houses</h3>
+                            <p class="text-gray-600 dark:text-gray-300">Proposed construction of residential and rental houses for various clients.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Management Team Section (Vanilla HTML - no React) -->
+        <section id="management" class="section py-16 bg-white dark:bg-gray-900">
+            <div class="container mx-auto px-6">
+                <div class="text-center mb-12">
+                    <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 dark:text-white mb-4" data-aos="fade-up">Our Management Team</h2>
+                    <p class="text-gray-600 dark:text-gray-300">The expertise behind our success</p>
+                </div>
+
+                <!-- Director -->
+                <div class="flex flex-col items-center">
+                    <div class="w-full max-w-md bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8 transition duration-300 hover:shadow-xl" data-aos="fade-up">
+                        <div class="flex items-center space-x-4">
+                            <img src="images/pinto.png" alt="Pinto Joseph Ochieng" class="w-20 h-20 rounded-full border-4 border-blue-600 object-cover">
+                            <div>
+                                <h3 class="text-xl font-semibold text-gray-800 dark:text-white">Pinto Joseph Ochieng</h3>
+                                <p class="text-blue-600 dark:text-blue-400">Director / Operations Manager</p>
+                                <p class="text-gray-600 dark:text-gray-300 text-sm mt-2">Experienced in building and construction project management, overseeing large-scale projects.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Team Members Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full mt-4">
+                        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="100">
+                            <img src="images/p3.jpg" alt="Benard Oketch" class="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-600 object-cover">
+                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white text-center">Benard Oketch</h3>
+                            <p class="text-blue-600 dark:text-blue-400 text-center text-sm">Site Agent / Manager</p>
+                            <p class="text-gray-600 dark:text-gray-300 text-sm mt-2 text-center">Civil engineer with experience in designing and constructing buildings nationwide.</p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="200">
+                            <img src="images/p2.jpg" alt="Erick Otiwa Odhiambo" class="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-600 object-cover">
+                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white text-center">Erick Otiwa Odhiambo</h3>
+                            <p class="text-blue-600 dark:text-blue-400 text-center text-sm">Technical Manager / Engineer</p>
+                            <p class="text-gray-600 dark:text-gray-300 text-sm mt-2 text-center">Civil engineer with expertise in technical planning and collaboration with international architects.</p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="300">
+                            <img src="images/p4.jpg" alt="Musa Rajab" class="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-600 object-cover">
+                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white text-center">Musa Rajab</h3>
+                            <p class="text-blue-600 dark:text-blue-400 text-center text-sm">Quantity Surveyor</p>
+                            <p class="text-gray-600 dark:text-gray-300 text-sm mt-2 text-center">Specialist in cost estimation and quantity surveying for large construction projects.</p>
+                        </div>
+                        <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 transition duration-300 hover:shadow-xl" data-aos="fade-up" data-aos-delay="400">
+                            <img src="images/p.jpg" alt="Peter Omondi" class="w-16 h-16 rounded-full mx-auto mb-4 border-2 border-blue-600 object-cover">
+                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white text-center">Peter Omondi</h3>
+                            <p class="text-blue-600 dark:text-blue-400 text-center text-sm">Civil Engineer</p>
+                            <p class="text-gray-600 dark:text-gray-300 text-sm mt-2 text-center">Expert in civil engineering, contributing to major projects across the country.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonials Section -->
+        <section id="testimonials" class="section py-16 bg-gray-100 dark:bg-gray-800">
+            <div class="container mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center mb-12 text-gray-800 dark:text-white" data-aos="fade-up">Client Testimonials</h2>
+
+                <div class="relative overflow-hidden">
+                    <!-- Navigation arrows -->
+                    <button id="testimonialPrev" class="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white dark:bg-gray-700 rounded-full p-2 shadow-lg hover:shadow-xl transition" aria-label="Previous testimonial">
+                        <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                        </svg>
+                    </button>
+                    <button id="testimonialNext" class="absolute right-0 top-1/2 transform -translate-y-1/2 z-10 bg-white dark:bg-gray-700 rounded-full p-2 shadow-lg hover:shadow-xl transition" aria-label="Next testimonial">
+                        <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </button>
+
+                    <div class="testimonials-carousel flex space-x-6 animate-scroll px-8">
+                        <div class="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md flex-none w-full md:w-96 transition-all duration-300 hover:shadow-xl">
+                            <p class="text-gray-700 dark:text-gray-300 mb-4">"Pintorex Construction delivered our market stalls on time with exceptional quality. We are extremely satisfied."</p>
+                            <p class="font-semibold text-gray-800 dark:text-white">- Migori County Government</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md flex-none w-full md:w-96 transition-all duration-300 hover:shadow-xl">
+                            <p class="text-gray-700 dark:text-gray-300 mb-4">"The construction of Ore Dispensary has improved healthcare in our community. Thank you, Pintorex!"</p>
+                            <p class="font-semibold text-gray-800 dark:text-white">- Migori County Government Hospital</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md flex-none w-full md:w-96 transition-all duration-300 hover:shadow-xl">
+                            <p class="text-gray-700 dark:text-gray-300 mb-4">"Pintorex did a fantastic job on the maternity ward at Ombo Kowiti. Their work is top-notch."</p>
+                            <p class="font-semibold text-gray-800 dark:text-white">- Ombo Kowiti Dispensary</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md flex-none w-full md:w-96 transition-all duration-300 hover:shadow-xl">
+                            <p class="text-gray-700 dark:text-gray-300 mb-4">"The engineering shade built by Pintorex is an excellent addition to our institute. Highly recommended!"</p>
+                            <p class="font-semibold text-gray-800 dark:text-white">- Kakrao Technical Training Institute</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-700 p-6 rounded-lg shadow-md flex-none w-full md:w-96 transition-all duration-300 hover:shadow-xl">
+                            <p class="text-gray-700 dark:text-gray-300 mb-4">"The residential houses Pintorex built for us are outstanding. Great craftsmanship and attention to detail."</p>
+                            <p class="font-semibold text-gray-800 dark:text-white">- Vincent Omondi Mori, Residential Client</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quote Form Section -->
+        <section id="quote" class="section py-16 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+            <div class="container mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center mb-12" data-aos="fade-up">Request a Quote</h2>
+                <form id="quoteForm" class="max-w-lg mx-auto">
+                    <div class="mb-4">
+                        <label for="name" class="block mb-2 font-medium">Name</label>
+                        <input type="text" id="name" name="name" maxlength="100" class="w-full px-4 py-3 text-gray-700 bg-white rounded-lg border-2 border-transparent focus:border-white" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="email" class="block mb-2 font-medium">Email</label>
+                        <input type="email" id="email" name="email" maxlength="100" class="w-full px-4 py-3 text-gray-700 bg-white rounded-lg border-2 border-transparent focus:border-white" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="project-type" class="block mb-2 font-medium">Project Type</label>
+                        <select id="project-type" name="projectType" class="w-full px-4 py-3 text-gray-700 bg-white rounded-lg border-2 border-transparent focus:border-white" required>
+                            <option value="">Select a project type</option>
+                            <option value="residential">Residential</option>
+                            <option value="commercial">Commercial</option>
+                            <option value="renovation">Renovation</option>
+                            <option value="infrastructure">Infrastructure</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="message" class="block mb-2 font-medium">Message</label>
+                        <textarea id="message" name="message" rows="4" maxlength="1000" class="w-full px-4 py-3 text-gray-700 bg-white rounded-lg border-2 border-transparent focus:border-white" required></textarea>
+                    </div>
+                    <div class="text-center">
+                        <button type="submit" id="quoteSubmitBtn" class="bg-white text-blue-600 py-3 px-8 rounded-full font-semibold hover:bg-gray-100 transition duration-300">
+                            <span id="quoteSubmitText">Get Estimate</span>
+                            <span id="quoteSubmitSpinner" class="hidden"><span class="spinner"></span>Sending...</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Contact Section -->
+        <section id="contact" class="section py-16 bg-white dark:bg-gray-900">
+            <div class="container mx-auto px-6">
+                <h2 class="text-3xl font-bold text-center mb-12 text-gray-800 dark:text-white" data-aos="fade-up">Contact Us</h2>
+                <div class="flex flex-col md:flex-row justify-between items-center gap-8">
+                    <div class="md:w-1/2" data-aos="fade-right">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Get in Touch</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mb-2">
+                            <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                            </svg>
+                            +254 769 157174
+                        </p>
+                        <p class="text-gray-600 dark:text-gray-300 mb-2">
+                            <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                            </svg>
+                            pintorexkenya@gmail.com
+                        </p>
+                        <p class="text-gray-600 dark:text-gray-300">
+                            <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            Migori, Kenya
+                        </p>
+                    </div>
+                    <div class="md:w-1/2" data-aos="fade-left">
+                        <div id="map-container" class="relative w-full max-w-lg mx-auto rounded-lg overflow-hidden shadow-lg" style="padding-bottom: 56.25%;">
+                            <div id="map" class="absolute inset-0"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <p>&copy; 2024 Pintorex Construction Limited. All rights reserved.</p>
+                <div class="flex space-x-4 mt-4 md:mt-0">
+                    <a href="https://facebook.com/pintorex" class="hover:text-blue-400 transition duration-300" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://twitter.com/pintorex" class="hover:text-blue-400 transition duration-300" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"></path>
+                        </svg>
+                    </a>
+                    <a href="https://instagram.com/pintorex" class="hover:text-blue-400 transition duration-300" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Back to top button -->
+    <button id="backToTop" class="fixed bottom-4 right-4 bg-blue-600 text-white p-3 rounded-full shadow-lg hidden transition duration-300 hover:bg-blue-700" aria-label="Back to top">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
+        </svg>
+    </button>
+
+    <!-- Toast notification container -->
+    <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="script/first.js"></script>
+</body>
+</html>
