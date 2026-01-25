@@ -1,14 +1,196 @@
 // ============================================================================
 // PINTOREX QUOTATION GENERATOR
-// Secure server-side authentication
+// Comprehensive document generation system with professional PDF output
 // ============================================================================
+
+// ============================================================================
+// CENTRALIZED COLOR SCHEME (Matching website branding)
+// ============================================================================
+
+const Colors = {
+    primary: [249, 115, 22],      // #F97316 - Orange
+    primaryDark: [234, 88, 12],   // #EA580C - Darker orange
+    secondary: [31, 41, 55],      // #1F2937 - Dark slate
+    secondaryLight: [55, 65, 81], // #374151 - Lighter slate
+    text: [17, 24, 39],           // #111827 - Near black
+    textMuted: [107, 114, 128],   // #6B7280 - Gray
+    subtle: [249, 250, 251],      // #F9FAFB - Light gray
+    white: [255, 255, 255],
+    success: [16, 185, 129],      // #10B981
+    error: [239, 68, 68],         // #EF4444
+    border: [209, 213, 219]       // #D1D5DB
+};
+
+// ============================================================================
+// LOGO DATA (Base64 encoded for PDF embedding)
+// ============================================================================
+
+let logoDataUrl = null;
+
+async function loadLogoForPDF() {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            logoDataUrl = canvas.toDataURL('image/png');
+            resolve(logoDataUrl);
+        };
+        img.onerror = function() {
+            console.warn('Could not load logo for PDF');
+            resolve(null);
+        };
+        img.src = 'images/logo_pint.png';
+    });
+}
+
+// ============================================================================
+// SESSION MANAGEMENT
+// ============================================================================
+
+const SessionManager = {
+    SESSION_KEY: 'pintorex_session',
+    SESSION_DURATION: 4 * 60 * 60 * 1000, // 4 hours
+
+    createSession() {
+        const session = {
+            authenticated: true,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + this.SESSION_DURATION
+        };
+        sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        return session;
+    },
+
+    getSession() {
+        const data = sessionStorage.getItem(this.SESSION_KEY);
+        if (!data) return null;
+
+        const session = JSON.parse(data);
+        if (Date.now() > session.expiresAt) {
+            this.clearSession();
+            return null;
+        }
+        return session;
+    },
+
+    isAuthenticated() {
+        return this.getSession() !== null;
+    },
+
+    clearSession() {
+        sessionStorage.removeItem(this.SESSION_KEY);
+    },
+
+    extendSession() {
+        const session = this.getSession();
+        if (session) {
+            session.expiresAt = Date.now() + this.SESSION_DURATION;
+            sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        }
+    }
+};
+
+// ============================================================================
+// FORM DATA PERSISTENCE
+// ============================================================================
+
+const FormPersistence = {
+    FORM_KEY: 'pintorex_form_data',
+
+    saveFormData(data) {
+        localStorage.setItem(this.FORM_KEY, JSON.stringify({
+            ...data,
+            savedAt: Date.now()
+        }));
+    },
+
+    loadFormData() {
+        const data = localStorage.getItem(this.FORM_KEY);
+        if (!data) return null;
+
+        const parsed = JSON.parse(data);
+        // Only restore if saved within last 24 hours
+        if (Date.now() - parsed.savedAt > 24 * 60 * 60 * 1000) {
+            this.clearFormData();
+            return null;
+        }
+        return parsed;
+    },
+
+    clearFormData() {
+        localStorage.removeItem(this.FORM_KEY);
+    }
+};
+
+// ============================================================================
+// CLIENT HISTORY MANAGEMENT
+// ============================================================================
+
+const ClientHistory = {
+    HISTORY_KEY: 'pintorex_client_history',
+    MAX_CLIENTS: 50,
+
+    getHistory() {
+        const data = localStorage.getItem(this.HISTORY_KEY);
+        return data ? JSON.parse(data) : [];
+    },
+
+    addClient(clientName, projectType) {
+        if (!clientName) return;
+
+        let history = this.getHistory();
+
+        // Check if client already exists
+        const existingIndex = history.findIndex(c =>
+            c.name.toLowerCase() === clientName.toLowerCase()
+        );
+
+        if (existingIndex >= 0) {
+            // Update existing client
+            history[existingIndex].projectType = projectType;
+            history[existingIndex].lastUsed = Date.now();
+            // Move to front
+            const client = history.splice(existingIndex, 1)[0];
+            history.unshift(client);
+        } else {
+            // Add new client
+            history.unshift({
+                name: clientName,
+                projectType: projectType,
+                lastUsed: Date.now()
+            });
+        }
+
+        // Limit history size
+        if (history.length > this.MAX_CLIENTS) {
+            history = history.slice(0, this.MAX_CLIENTS);
+        }
+
+        localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
+    },
+
+    searchClients(query) {
+        if (!query || query.length < 2) return [];
+
+        const history = this.getHistory();
+        const lowerQuery = query.toLowerCase();
+
+        return history.filter(c =>
+            c.name.toLowerCase().includes(lowerQuery)
+        ).slice(0, 5);
+    }
+};
 
 // ============================================================================
 // DOCUMENT REGISTRY & NUMBERING SYSTEM
 // ============================================================================
 
 const DocumentRegistry = {
-    // Initialize registry from localStorage
     init() {
         if (!localStorage.getItem('pintorex_registry')) {
             localStorage.setItem('pintorex_registry', JSON.stringify({
@@ -18,17 +200,15 @@ const DocumentRegistry = {
         }
     },
 
-    // Generate unique document number
     generateNumber(type) {
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
         const date = new Date();
         const yearMonth = date.getFullYear().toString().slice(-2) +
                          (date.getMonth() + 1).toString().padStart(2, '0');
 
-        // Get or initialize counter for this type and month
         const key = `${type}_${yearMonth}`;
         if (!registry.counters[key]) {
-            registry.counters[key] = Math.floor(Math.random() * 100) + 100; // Start from 100-199
+            registry.counters[key] = Math.floor(Math.random() * 100) + 100;
         } else {
             registry.counters[key]++;
         }
@@ -47,7 +227,6 @@ const DocumentRegistry = {
 
         const number = `${prefixes[type]}${yearMonth}-${registry.counters[key]}`;
 
-        // Store in registry
         registry.documents.push({
             number: number,
             type: type,
@@ -59,20 +238,12 @@ const DocumentRegistry = {
         return number;
     },
 
-    // Check if number exists
-    exists(number) {
-        const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
-        return registry.documents.some(doc => doc.number === number);
-    },
-
-    // Get last generated document of specific type
     getLastDocument(type) {
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
         const docs = registry.documents.filter(doc => doc.type === type);
         return docs.length > 0 ? docs[docs.length - 1] : null;
     },
 
-    // Get all documents
     getAllDocuments() {
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
         return registry.documents;
@@ -80,7 +251,7 @@ const DocumentRegistry = {
 };
 
 // ============================================================================
-// SETTINGS MANAGEMENT SYSTEM
+// SETTINGS MANAGEMENT
 // ============================================================================
 
 const SettingsManager = {
@@ -114,79 +285,139 @@ const SettingsManager = {
         const settings = this.getSettings();
         settings.bankDetails = details;
         this.saveSettings(settings);
-    },
-
-    getSuppliers() {
-        return this.getSettings().suppliers;
-    },
-
-    addSupplier(supplier) {
-        const settings = this.getSettings();
-        settings.suppliers.push(supplier);
-        this.saveSettings(settings);
     }
 };
 
 // ============================================================================
-// UI MODAL SYSTEM
+// TOAST NOTIFICATION SYSTEM
+// ============================================================================
+
+const Toast = {
+    show(message, type = 'info', duration = 3000) {
+        const toast = document.getElementById('toast');
+        if (!toast) return;
+        toast.textContent = message;
+        toast.className = `toast ${type} show`;
+        setTimeout(() => { toast.classList.remove('show'); }, duration);
+    },
+    success(message) { this.show(message, 'success'); },
+    error(message) { this.show(message, 'error', 5000); },
+    info(message) { this.show(message, 'info'); }
+};
+
+// ============================================================================
+// PROGRESS OVERLAY
+// ============================================================================
+
+const ProgressOverlay = {
+    overlay: null,
+
+    show(title = 'Generating Documents', total = 1) {
+        this.total = total;
+        this.current = 0;
+
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'progress-overlay';
+        this.overlay.innerHTML = `
+            <div class="progress-content">
+                <div class="progress-title">${title}</div>
+                <div class="progress-text" id="progressText">Preparing...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-count" id="progressCount">0 / ${total}</div>
+            </div>
+        `;
+        document.body.appendChild(this.overlay);
+    },
+
+    update(current, text) {
+        this.current = current;
+        const percentage = Math.round((current / this.total) * 100);
+
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressCount = document.getElementById('progressCount');
+
+        if (progressFill) progressFill.style.width = `${percentage}%`;
+        if (progressText) progressText.textContent = text;
+        if (progressCount) progressCount.textContent = `${current} / ${this.total}`;
+    },
+
+    hide() {
+        if (this.overlay) {
+            this.overlay.remove();
+            this.overlay = null;
+        }
+    }
+};
+
+// ============================================================================
+// MODAL UI SYSTEM
 // ============================================================================
 
 const ModalUI = {
-    // Create modal HTML
-    createModal(title, content, buttons) {
+    createModal(title, subtitle, content, buttons) {
         const modalHTML = `
-            <div id="pintorexModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
-                <div style="background: white; border-radius: 8px; padding: 30px; max-width: 500px; width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px;">${title}</h2>
-                    <div id="modalContent">${content}</div>
-                    <div id="modalButtons" style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
-                        ${buttons}
+            <div id="pintorexModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2 id="modalTitle" class="modal-title">${title}</h2>
+                        ${subtitle ? `<p class="modal-subtitle">${subtitle}</p>` : ''}
                     </div>
+                    <div class="modal-body" id="modalContent">${content}</div>
+                    <div class="modal-footer" id="modalButtons">${buttons}</div>
                 </div>
             </div>
         `;
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
-        return document.getElementById('pintorexModal');
+
+        // Focus trap
+        const modal = document.getElementById('pintorexModal');
+        const focusableElements = modal.querySelectorAll('input, button, select, textarea');
+        if (focusableElements.length > 0) {
+            focusableElements[0].focus();
+        }
+
+        return modal;
     },
 
-    // Remove modal
     removeModal() {
         const modal = document.getElementById('pintorexModal');
         if (modal) modal.remove();
     },
 
-    // Prompt for LPO supplier details
     async promptLPODetails() {
         return new Promise((resolve) => {
             const content = `
-                <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Supplier Name *</label>
-                        <input type="text" id="supplierName" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" required>
+                        <label class="form-label required-field" for="supplierName">Supplier Name</label>
+                        <input type="text" id="supplierName" class="form-input" required>
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Supplier Address</label>
-                        <input type="text" id="supplierAddress" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <label class="form-label" for="supplierAddress">Supplier Address</label>
+                        <input type="text" id="supplierAddress" class="form-input">
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Supplier Contact</label>
-                        <input type="text" id="supplierContact" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <label class="form-label" for="supplierContact">Supplier Contact</label>
+                        <input type="text" id="supplierContact" class="form-input">
                     </div>
                 </div>
             `;
 
             const buttons = `
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))" style="padding: 8px 16px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">Continue</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
             `;
 
-            const modal = this.createModal('LPO Supplier Details', content, buttons);
+            const modal = this.createModal('LPO Supplier Details', 'Enter the supplier information for this purchase order', content, buttons);
 
             modal.addEventListener('submit', () => {
                 const supplierName = document.getElementById('supplierName').value;
                 if (!supplierName) {
-                    alert('Supplier name is required');
+                    Toast.error('Supplier name is required');
                     return;
                 }
 
@@ -207,47 +438,46 @@ const ModalUI = {
         });
     },
 
-    // Prompt for payment details
     async promptPaymentDetails() {
         const settings = SettingsManager.getBankDetails();
 
         return new Promise((resolve) => {
             const content = `
-                <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Bank Name *</label>
-                        <input type="text" id="bankName" value="${settings.bankName}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" required>
+                        <label class="form-label required-field" for="bankName">Bank Name</label>
+                        <input type="text" id="bankName" value="${settings.bankName}" class="form-input" required>
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Account Number *</label>
-                        <input type="text" id="accountNumber" value="${settings.accountNumber}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" required>
+                        <label class="form-label required-field" for="accountNumber">Account Number</label>
+                        <input type="text" id="accountNumber" value="${settings.accountNumber}" class="form-input" required>
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Branch</label>
-                        <input type="text" id="branch" value="${settings.branch}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <label class="form-label" for="branch">Branch</label>
+                        <input type="text" id="branch" value="${settings.branch}" class="form-input">
                     </div>
-                    <div style="margin-top: 10px;">
-                        <label style="display: flex; align-items: center; gap: 8px; color: #374151;">
-                            <input type="checkbox" id="saveDetails" checked>
-                            <span>Save these details for future use</span>
+                    <div style="margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="saveDetails" checked style="width: 18px; height: 18px;">
+                            <span style="font-size: 0.875rem; color: #374151;">Save these details for future use</span>
                         </label>
                     </div>
                 </div>
             `;
 
             const buttons = `
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))" style="padding: 8px 16px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">Continue</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
             `;
 
-            const modal = this.createModal('Bank Payment Details', content, buttons);
+            const modal = this.createModal('Bank Payment Details', 'Enter the bank details for payment', content, buttons);
 
             modal.addEventListener('submit', () => {
                 const bankName = document.getElementById('bankName').value;
                 const accountNumber = document.getElementById('accountNumber').value;
 
                 if (!bankName || !accountNumber) {
-                    alert('Bank name and account number are required');
+                    Toast.error('Bank name and account number are required');
                     return;
                 }
 
@@ -273,37 +503,38 @@ const ModalUI = {
         });
     },
 
-    // Prompt for invoice order number
     async promptInvoiceDetails() {
         const lastDelivery = DocumentRegistry.getLastDocument('delivery');
 
         return new Promise((resolve) => {
             const content = `
-                <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Order Number *</label>
-                        <input type="text" id="orderNumber" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;" required>
+                        <label class="form-label required-field" for="orderNumber">Order Number</label>
+                        <input type="text" id="orderNumber" class="form-input" required>
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; color: #374151; font-weight: 500;">Delivery Note Number</label>
-                        <input type="text" id="deliveryNumber" value="${lastDelivery ? lastDelivery.number : ''}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
-                        ${lastDelivery ? '<small style="color: #6b7280;">Auto-filled from last delivery note</small>' : '<small style="color: #6b7280;">Optional - leave blank if not applicable</small>'}
+                        <label class="form-label" for="deliveryNumber">Delivery Note Number</label>
+                        <input type="text" id="deliveryNumber" value="${lastDelivery ? lastDelivery.number : ''}" class="form-input">
+                        <p style="font-size: 0.75rem; color: #6B7280; margin-top: 4px;">
+                            ${lastDelivery ? 'Auto-filled from last delivery note' : 'Optional - leave blank if not applicable'}
+                        </p>
                     </div>
                 </div>
             `;
 
             const buttons = `
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))" style="padding: 8px 16px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-                <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))" style="padding: 8px 16px; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer;">Continue</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
             `;
 
-            const modal = this.createModal('Invoice Details', content, buttons);
+            const modal = this.createModal('Invoice Details', 'Enter the invoice reference information', content, buttons);
 
             modal.addEventListener('submit', () => {
                 const orderNumber = document.getElementById('orderNumber').value;
 
                 if (!orderNumber) {
-                    alert('Order number is required');
+                    Toast.error('Order number is required');
                     return;
                 }
 
@@ -323,51 +554,108 @@ const ModalUI = {
         });
     },
 
-    // Settings modal
+    async promptReceiptDetails() {
+        return new Promise((resolve) => {
+            const content = `
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <label class="form-label required-field" for="paymentMethod">Payment Method</label>
+                        <select id="paymentMethod" class="form-input" required>
+                            <option value="">Select payment method</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="M-Pesa">M-Pesa</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Credit Card">Credit Card</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="referenceNumber">Reference/Transaction Number</label>
+                        <input type="text" id="referenceNumber" class="form-input" placeholder="e.g., Transaction ID, Cheque No.">
+                    </div>
+                    <div>
+                        <label class="form-label" for="amountPaid">Amount Paid (Leave blank for full amount)</label>
+                        <input type="number" id="amountPaid" class="form-input" min="0" step="0.01" placeholder="Full amount if blank">
+                    </div>
+                </div>
+            `;
+
+            const buttons = `
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Generate Receipt</button>
+            `;
+
+            const modal = this.createModal('Receipt Details', 'Enter the payment information for this receipt', content, buttons);
+
+            modal.addEventListener('submit', () => {
+                const paymentMethod = document.getElementById('paymentMethod').value;
+
+                if (!paymentMethod) {
+                    Toast.error('Please select a payment method');
+                    return;
+                }
+
+                const details = {
+                    paymentMethod: paymentMethod,
+                    referenceNumber: document.getElementById('referenceNumber').value,
+                    amountPaid: document.getElementById('amountPaid').value
+                };
+
+                this.removeModal();
+                resolve(details);
+            });
+
+            modal.addEventListener('cancel', () => {
+                this.removeModal();
+                resolve(null);
+            });
+        });
+    },
+
     showSettings() {
         const settings = SettingsManager.getSettings();
+        const documents = DocumentRegistry.getAllDocuments().slice(-10).reverse();
 
         const content = `
-            <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 24px;">
                 <div>
-                    <h3 style="margin: 0 0 10px 0; color: #1f2937; font-size: 16px;">Bank Details</h3>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Bank Details</h3>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
                         <div>
-                            <label style="display: block; margin-bottom: 5px; color: #374151; font-size: 14px;">Bank Name</label>
-                            <input type="text" id="settingsBankName" value="${settings.bankDetails.bankName}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                            <label class="form-label" for="settingsBankName">Bank Name</label>
+                            <input type="text" id="settingsBankName" value="${settings.bankDetails.bankName}" class="form-input">
                         </div>
                         <div>
-                            <label style="display: block; margin-bottom: 5px; color: #374151; font-size: 14px;">Account Number</label>
-                            <input type="text" id="settingsAccountNumber" value="${settings.bankDetails.accountNumber}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                            <label class="form-label" for="settingsAccountNumber">Account Number</label>
+                            <input type="text" id="settingsAccountNumber" value="${settings.bankDetails.accountNumber}" class="form-input">
                         </div>
                         <div>
-                            <label style="display: block; margin-bottom: 5px; color: #374151; font-size: 14px;">Branch</label>
-                            <input type="text" id="settingsBranch" value="${settings.bankDetails.branch}" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px;">
+                            <label class="form-label" for="settingsBranch">Branch</label>
+                            <input type="text" id="settingsBranch" value="${settings.bankDetails.branch}" class="form-input">
                         </div>
                     </div>
                 </div>
 
                 <div>
-                    <h3 style="margin: 0 0 10px 0; color: #1f2937; font-size: 16px;">Document Registry</h3>
-                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 4px; padding: 10px;">
-                        <div style="font-size: 12px; color: #6b7280;">
-                            ${DocumentRegistry.getAllDocuments().slice(-10).reverse().map(doc =>
-                                `<div style="padding: 5px 0; border-bottom: 1px solid #e5e7eb;">
-                                    <strong>${doc.number}</strong> - ${doc.type} - ${new Date(doc.date).toLocaleDateString('en-GB')}
-                                </div>`
-                            ).join('') || '<div style="color: #9ca3af;">No documents generated yet</div>'}
-                        </div>
+                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Recent Documents</h3>
+                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #D1D5DB; border-radius: 8px; padding: 12px;">
+                        ${documents.length > 0 ? documents.map(doc => `
+                            <div style="padding: 8px 0; border-bottom: 1px solid #F3F4F6; font-size: 0.875rem;">
+                                <strong style="color: #F97316;">${doc.number}</strong>
+                                <span style="color: #6B7280;"> - ${doc.type} - ${new Date(doc.date).toLocaleDateString('en-GB')}</span>
+                            </div>
+                        `).join('') : '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No documents generated yet</div>'}
                     </div>
                 </div>
             </div>
         `;
 
         const buttons = `
-            <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('close'))" style="padding: 8px 16px; background: #e5e7eb; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-            <button onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('save'))" style="padding: 8px 16px; background: #1f2937; color: white; border: none; border-radius: 4px; cursor: pointer;">Save Settings</button>
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('close'))">Close</button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('save'))">Save Settings</button>
         `;
 
-        const modal = this.createModal('Settings & Registry', content, buttons);
+        const modal = this.createModal('Settings & Document Registry', 'Manage your preferences and view recent documents', content, buttons);
 
         modal.addEventListener('save', () => {
             const bankDetails = {
@@ -378,7 +666,7 @@ const ModalUI = {
             };
 
             SettingsManager.saveBankDetails(bankDetails);
-            alert('Settings saved successfully!');
+            Toast.success('Settings saved successfully');
             this.removeModal();
         });
 
@@ -387,90 +675,6 @@ const ModalUI = {
         });
     }
 };
-
-// ============================================================================
-// TOAST NOTIFICATION SYSTEM
-// ============================================================================
-
-const Toast = {
-    show(message, type = 'info', duration = 3000) {
-        const toast = document.getElementById('toast');
-        if (!toast) return;
-        toast.textContent = message;
-        toast.className = `toast ${type} show`;
-        setTimeout(() => { toast.classList.remove('show'); }, duration);
-    },
-    success(message) { this.show(message, 'success'); },
-    error(message) { this.show(message, 'error'); },
-    info(message) { this.show(message, 'info'); }
-};
-
-// ============================================================================
-// MATERIAL ROW FUNCTIONS
-// ============================================================================
-
-function createMaterialRow() {
-    const row = document.createElement('div');
-    row.className = 'material-row mb-4 grid grid-cols-6 gap-2 items-center';
-    row.innerHTML = `
-        <input type="text" name="materialName[]" placeholder="Material name" class="col-span-2 p-2 border rounded" required>
-        <select name="materialUnit[]" class="p-2 border rounded">
-            <option value="kgs">Kilograms (kgs)</option>
-            <option value="m">Meters (m)</option>
-            <option value="sqm">Square Meters (sq.m)</option>
-            <option value="pcs">Pieces (pcs)</option>
-            <option value="bags">Bags</option>
-            <option value="ltrs">Liters (ltrs)</option>
-            <option value="inch">Inches (in)</option>
-            <option value="ft">Feet (ft)</option>
-            <option value="rolls">Rolls</option>
-            <option value="cu.m">Cubic Meters (cu.m)</option>
-            <option value="tonnes">Tonnes</option>
-            <option value="sheets">Sheets</option>
-            <option value="boxes">Boxes</option>
-            <option value="units">Units</option>
-            <option value="yards">Yards</option>
-            <option value="gallons">Gallons</option>
-        </select>
-        <input type="number" name="materialQuantity[]" placeholder="Quantity" class="p-2 border rounded" required>
-        <input type="number" name="materialUnitPrice[]" placeholder="Unit Price" class="p-2 border rounded" required>
-        <button type="button" class="removeMaterialBtn bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded transition-colors">
-            Remove
-        </button>
-    `;
-    return row;
-}
-
-function addMaterialRow() {
-    const materialsContainer = document.getElementById('materialsContainer');
-    const newRow = createMaterialRow();
-    materialsContainer.appendChild(newRow);
-
-    const removeBtn = newRow.querySelector('.removeMaterialBtn');
-    if (removeBtn) {
-        removeBtn.addEventListener('click', function() {
-            materialsContainer.removeChild(newRow);
-        });
-    }
-}
-
-function gatherMaterialsData() {
-    const materials = [];
-    const rows = document.querySelectorAll('.material-row');
-
-    rows.forEach(row => {
-        const name = row.querySelector('[name="materialName[]"]').value;
-        const unit = row.querySelector('[name="materialUnit[]"]').value;
-        const quantity = parseFloat(row.querySelector('[name="materialQuantity[]"]').value);
-        const unitPrice = parseFloat(row.querySelector('[name="materialUnitPrice[]"]').value);
-
-        if (name && !isNaN(quantity) && !isNaN(unitPrice)) {
-            materials.push({ name, unit, quantity, unitPrice });
-        }
-    });
-
-    return materials;
-}
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -511,110 +715,547 @@ function calculateTotals(data) {
 }
 
 // ============================================================================
-// SMART SPACING SYSTEM
+// MATERIAL ROW FUNCTIONS
+// ============================================================================
+
+let materialRowId = 0;
+
+function createMaterialRow() {
+    const rowId = ++materialRowId;
+    const row = document.createElement('div');
+    row.className = 'material-row';
+    row.id = `material-row-${rowId}`;
+    row.innerHTML = `
+        <div class="material-name" style="grid-column: span 2;">
+            <label for="materialName-${rowId}" class="sr-only">Material name</label>
+            <input type="text" id="materialName-${rowId}" name="materialName[]" placeholder="Material name"
+                   class="material-input w-full" required aria-label="Material name">
+            <div class="duplicate-warning hidden" id="duplicateWarning-${rowId}">Possible duplicate material</div>
+        </div>
+        <div>
+            <label for="materialUnit-${rowId}" class="sr-only">Unit</label>
+            <select id="materialUnit-${rowId}" name="materialUnit[]" class="material-input w-full" aria-label="Unit of measurement">
+                <option value="kgs">Kilograms (kgs)</option>
+                <option value="m">Meters (m)</option>
+                <option value="sqm">Square Meters (sq.m)</option>
+                <option value="pcs">Pieces (pcs)</option>
+                <option value="bags">Bags</option>
+                <option value="ltrs">Liters (ltrs)</option>
+                <option value="inch">Inches (in)</option>
+                <option value="ft">Feet (ft)</option>
+                <option value="rolls">Rolls</option>
+                <option value="cu.m">Cubic Meters (cu.m)</option>
+                <option value="tonnes">Tonnes</option>
+                <option value="sheets">Sheets</option>
+                <option value="boxes">Boxes</option>
+                <option value="units">Units</option>
+                <option value="yards">Yards</option>
+                <option value="gallons">Gallons</option>
+            </select>
+        </div>
+        <div>
+            <label for="materialQty-${rowId}" class="sr-only">Quantity</label>
+            <input type="number" id="materialQty-${rowId}" name="materialQuantity[]" placeholder="Qty"
+                   class="material-input w-full" required min="0" step="0.01" aria-label="Quantity">
+        </div>
+        <div>
+            <label for="materialPrice-${rowId}" class="sr-only">Unit Price</label>
+            <input type="number" id="materialPrice-${rowId}" name="materialUnitPrice[]" placeholder="Unit Price"
+                   class="material-input w-full" required min="0" step="0.01" aria-label="Unit price in KES">
+        </div>
+        <button type="button" class="remove-btn" onclick="removeMaterialRow(${rowId})" aria-label="Remove this material">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Remove
+        </button>
+    `;
+
+    // Add duplicate detection
+    const nameInput = row.querySelector(`#materialName-${rowId}`);
+    nameInput.addEventListener('input', () => checkDuplicateMaterial(rowId));
+
+    return row;
+}
+
+function checkDuplicateMaterial(rowId) {
+    const nameInput = document.getElementById(`materialName-${rowId}`);
+    const warningDiv = document.getElementById(`duplicateWarning-${rowId}`);
+
+    if (!nameInput || !warningDiv) return;
+
+    const currentName = nameInput.value.toLowerCase().trim();
+    if (!currentName) {
+        warningDiv.classList.add('hidden');
+        return;
+    }
+
+    const allNames = document.querySelectorAll('[name="materialName[]"]');
+    let duplicateFound = false;
+
+    allNames.forEach(input => {
+        if (input.id !== `materialName-${rowId}`) {
+            const otherName = input.value.toLowerCase().trim();
+            if (otherName && otherName === currentName) {
+                duplicateFound = true;
+            }
+        }
+    });
+
+    if (duplicateFound) {
+        warningDiv.classList.remove('hidden');
+    } else {
+        warningDiv.classList.add('hidden');
+    }
+}
+
+function addMaterialRow() {
+    const materialsContainer = document.getElementById('materialsContainer');
+    const emptyState = document.getElementById('materialsEmpty');
+    const addBtn = document.getElementById('addMaterialBtn');
+
+    // Hide empty state and show add button
+    if (emptyState) emptyState.style.display = 'none';
+    if (addBtn) addBtn.classList.remove('hidden');
+
+    const newRow = createMaterialRow();
+    materialsContainer.appendChild(newRow);
+
+    // Focus the new row's name input
+    const nameInput = newRow.querySelector('input[name="materialName[]"]');
+    if (nameInput) nameInput.focus();
+
+    updateMaterialsCount();
+    saveFormDataDebounced();
+}
+
+function removeMaterialRow(rowId) {
+    const row = document.getElementById(`material-row-${rowId}`);
+    if (row) {
+        row.remove();
+        updateMaterialsCount();
+        saveFormDataDebounced();
+
+        // Show empty state if no materials
+        const rows = document.querySelectorAll('.material-row');
+        if (rows.length === 0) {
+            const emptyState = document.getElementById('materialsEmpty');
+            const addBtn = document.getElementById('addMaterialBtn');
+            if (emptyState) emptyState.style.display = 'block';
+            if (addBtn) addBtn.classList.add('hidden');
+        }
+    }
+}
+
+function updateMaterialsCount() {
+    const count = document.querySelectorAll('.material-row').length;
+    const countEl = document.getElementById('materialsCount');
+    if (countEl) {
+        countEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+    }
+}
+
+function gatherMaterialsData() {
+    const materials = [];
+    const rows = document.querySelectorAll('.material-row');
+
+    rows.forEach(row => {
+        const nameInput = row.querySelector('[name="materialName[]"]');
+        const unitInput = row.querySelector('[name="materialUnit[]"]');
+        const qtyInput = row.querySelector('[name="materialQuantity[]"]');
+        const priceInput = row.querySelector('[name="materialUnitPrice[]"]');
+
+        const name = nameInput ? nameInput.value : '';
+        const unit = unitInput ? unitInput.value : '';
+        const quantity = qtyInput ? parseFloat(qtyInput.value) : 0;
+        const unitPrice = priceInput ? parseFloat(priceInput.value) : 0;
+
+        if (name && !isNaN(quantity) && !isNaN(unitPrice)) {
+            materials.push({ name, unit, quantity, unitPrice });
+        }
+    });
+
+    return materials;
+}
+
+// ============================================================================
+// FORM PERSISTENCE (DEBOUNCED)
+// ============================================================================
+
+let saveTimeout = null;
+
+function saveFormDataDebounced() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+        const form = document.getElementById('quotationForm');
+        if (!form) return;
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        data.materials = JSON.stringify(gatherMaterialsData());
+
+        FormPersistence.saveFormData(data);
+    }, 500);
+}
+
+function restoreFormData() {
+    const savedData = FormPersistence.loadFormData();
+    if (!savedData) return;
+
+    // Restore basic fields
+    const fields = ['clientName', 'projectType', 'projectDescription', 'laborType', 'laborCost', 'vatPercentage', 'contingencyPercentage'];
+    fields.forEach(field => {
+        const input = document.getElementById(field);
+        if (input && savedData[field]) {
+            input.value = savedData[field];
+        }
+    });
+
+    // Restore materials
+    if (savedData.materials) {
+        const materials = JSON.parse(savedData.materials);
+        if (materials.length > 0) {
+            const emptyState = document.getElementById('materialsEmpty');
+            const addBtn = document.getElementById('addMaterialBtn');
+            if (emptyState) emptyState.style.display = 'none';
+            if (addBtn) addBtn.classList.remove('hidden');
+
+            materials.forEach(m => {
+                const row = createMaterialRow();
+                document.getElementById('materialsContainer').appendChild(row);
+
+                const nameInput = row.querySelector('[name="materialName[]"]');
+                const unitInput = row.querySelector('[name="materialUnit[]"]');
+                const qtyInput = row.querySelector('[name="materialQuantity[]"]');
+                const priceInput = row.querySelector('[name="materialUnitPrice[]"]');
+
+                if (nameInput) nameInput.value = m.name;
+                if (unitInput) unitInput.value = m.unit;
+                if (qtyInput) qtyInput.value = m.quantity;
+                if (priceInput) priceInput.value = m.unitPrice;
+            });
+
+            updateMaterialsCount();
+        }
+    }
+
+    // Update character count
+    updateCharCount();
+
+    // Update labor visibility
+    handleLaborTypeChange();
+
+    Toast.info('Previous form data restored');
+}
+
+// ============================================================================
+// VALIDATION
+// ============================================================================
+
+function validateFormData(data, showMessages = true) {
+    const errors = [];
+
+    if (!data.clientName || !data.clientName.trim()) {
+        errors.push('Client name is required');
+    }
+
+    if (!data.projectType) {
+        errors.push('Project type is required');
+    }
+
+    const materials = JSON.parse(data.materials || '[]');
+    if (materials.length === 0) {
+        errors.push('Please add at least one material');
+    }
+
+    if (showMessages && errors.length > 0) {
+        showValidationErrors(errors);
+    }
+
+    return errors.length === 0;
+}
+
+function showValidationErrors(errors) {
+    const container = document.getElementById('validationMessages');
+    if (!container) return;
+
+    container.innerHTML = errors.map(error => `
+        <div class="validation-message error">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>${error}</span>
+        </div>
+    `).join('');
+
+    // Scroll to top
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearValidationErrors() {
+    const container = document.getElementById('validationMessages');
+    if (container) container.innerHTML = '';
+}
+
+// ============================================================================
+// SMART SPACING SYSTEM FOR PDFs
 // ============================================================================
 
 const SmartSpacing = {
-    calculateAvailableSpace(doc, currentY) {
-        const pageHeight = doc.internal.pageSize.height;
-        const footerHeight = 15;
-        const bottomMargin = 20;
-        return pageHeight - currentY - footerHeight - bottomMargin;
-    },
-
     checkAndAddPage(doc, currentY, requiredHeight, addHeaderFooter) {
-        const availableSpace = this.calculateAvailableSpace(doc, currentY);
+        const pageHeight = doc.internal.pageSize.height;
+        const footerHeight = 20;
+        const bottomMargin = 15;
+        const availableSpace = pageHeight - currentY - footerHeight - bottomMargin;
 
         if (availableSpace < requiredHeight) {
             doc.addPage();
             if (addHeaderFooter) addHeaderFooter();
-            return 35; // Return new yPos after header
+            return 45; // Return new yPos after header
         }
         return currentY;
-    },
-
-    optimizeTextSpacing(lines, availableHeight) {
-        const baseLineHeight = 5;
-        const minLineHeight = 4;
-        const maxLineHeight = 6;
-
-        const requiredHeight = lines * baseLineHeight;
-
-        if (requiredHeight > availableHeight) {
-            return Math.max(minLineHeight, availableHeight / lines);
-        } else if (requiredHeight < availableHeight * 0.5) {
-            return Math.min(maxLineHeight, availableHeight / lines);
-        }
-
-        return baseLineHeight;
     }
 };
 
 // ============================================================================
-// COMMON HEADER AND FOOTER
+// PROFESSIONAL LETTERHEAD HEADER & FOOTER
 // ============================================================================
 
-function addDocumentHeader(doc) {
+function addProfessionalHeader(doc, documentType = '') {
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
-    doc.setFillColor(31, 41, 55);
-    doc.rect(0, 0, pageWidth, 25, 'F');
+    // Elegant header bar
+    doc.setFillColor(...Colors.secondary);
+    doc.rect(0, 0, pageWidth, 32, 'F');
 
-    doc.setTextColor(255, 255, 255);
+    // Orange accent line
+    doc.setFillColor(...Colors.primary);
+    doc.rect(0, 32, pageWidth, 2, 'F');
+
+    // Add logo if available
+    if (logoDataUrl) {
+        try {
+            doc.addImage(logoDataUrl, 'PNG', margin, 4, 24, 24);
+        } catch (e) {
+            console.warn('Could not add logo to PDF');
+        }
+    }
+
+    // Company name
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("PINTOREX", margin, 15);
+    doc.setFontSize(16);
+    doc.text("PINTOREX", margin + (logoDataUrl ? 30 : 0), 16);
 
+    // Tagline
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("CONSTRUCTION LIMITED", margin + (logoDataUrl ? 30 : 0), 22);
+    doc.setFontSize(7);
+    doc.text("Building Excellence, Crafting Dreams", margin + (logoDataUrl ? 30 : 0), 27);
+
+    // Contact info on right
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text("CONSTRUCTION LIMITED", margin, 20);
-
-    doc.setFontSize(8);
-    doc.text([
+    const contactInfo = [
         "Tel: +254 769 157174",
-        "Email: pintorexkenya@gmail.com"
-    ], pageWidth - margin, 15, { align: "right" });
+        "Email: pintorexkenya@gmail.com",
+        "Migori Town, Kenya"
+    ];
+    let contactY = 12;
+    contactInfo.forEach(info => {
+        doc.text(info, pageWidth - margin, contactY, { align: "right" });
+        contactY += 5;
+    });
+
+    // Document type badge
+    if (documentType) {
+        doc.setFillColor(...Colors.primary);
+        const badgeWidth = doc.getTextWidth(documentType) + 16;
+        doc.roundedRect(pageWidth - margin - badgeWidth, 25, badgeWidth, 8, 2, 2, 'F');
+        doc.setTextColor(...Colors.white);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text(documentType, pageWidth - margin - badgeWidth/2, 30, { align: "center" });
+    }
 }
 
-function addDocumentFooter(doc) {
+function addProfessionalFooter(doc, pageNumber = null) {
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
+    const margin = 15;
 
-    const footerY = pageHeight - 15;
-    doc.setFillColor(31, 41, 55);
-    doc.rect(0, footerY, pageWidth, 15, 'F');
+    // Footer bar
+    const footerY = pageHeight - 18;
+    doc.setFillColor(...Colors.secondary);
+    doc.rect(0, footerY, pageWidth, 18, 'F');
 
-    doc.setTextColor(255, 255, 255);
+    // Orange accent line above footer
+    doc.setFillColor(...Colors.primary);
+    doc.rect(0, footerY - 1, pageWidth, 1, 'F');
+
+    // Footer text
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text([
-        "Pintorex Construction Limited | Building Excellence, Crafting Dreams",
-        "+254 769 157174 | pintorexkenya@gmail.com"
-    ], pageWidth / 2, footerY + 6, { align: "center" });
+
+    doc.text("Pintorex Construction Limited | Building Excellence, Crafting Dreams", pageWidth / 2, footerY + 6, { align: "center" });
+    doc.text("+254 769 157174 | pintorexkenya@gmail.com | Migori Town, Kenya", pageWidth / 2, footerY + 11, { align: "center" });
+
+    // Page number
+    if (pageNumber !== null) {
+        doc.setFontSize(8);
+        doc.text(`Page ${pageNumber}`, pageWidth - margin, footerY + 9, { align: "right" });
+    }
 }
 
 // ============================================================================
-// EVENT LISTENERS
+// BUTTON LOADING STATE
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', function() {
+function setButtonLoading(buttonId, loading) {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+
+    const textEl = btn.querySelector('.btn-text');
+    const loadingEl = btn.querySelector('.btn-loading');
+
+    if (loading) {
+        btn.disabled = true;
+        if (textEl) textEl.classList.add('hidden');
+        if (loadingEl) loadingEl.classList.remove('hidden');
+    } else {
+        btn.disabled = false;
+        if (textEl) textEl.classList.remove('hidden');
+        if (loadingEl) loadingEl.classList.add('hidden');
+    }
+}
+
+// ============================================================================
+// CHARACTER COUNT
+// ============================================================================
+
+function updateCharCount() {
+    const textarea = document.getElementById('projectDescription');
+    const countEl = document.getElementById('descCharCount');
+    if (textarea && countEl) {
+        countEl.textContent = textarea.value.length;
+    }
+}
+
+// ============================================================================
+// LABOR TYPE HANDLING
+// ============================================================================
+
+function handleLaborTypeChange() {
+    const laborTypeSelect = document.getElementById('laborType');
+    const customLaborDiv = document.getElementById('customLaborDiv');
+    const laborCostInput = document.getElementById('laborCost');
+
+    if (!laborTypeSelect || !customLaborDiv) return;
+
+    if (laborTypeSelect.value === 'custom') {
+        customLaborDiv.style.display = 'block';
+        if (laborCostInput) laborCostInput.required = true;
+    } else {
+        customLaborDiv.style.display = 'none';
+        if (laborCostInput) laborCostInput.required = false;
+    }
+}
+
+// ============================================================================
+// CLIENT HISTORY DROPDOWN
+// ============================================================================
+
+function setupClientHistory() {
+    const clientInput = document.getElementById('clientName');
+    const dropdown = document.getElementById('clientHistoryDropdown');
+
+    if (!clientInput || !dropdown) return;
+
+    clientInput.addEventListener('input', () => {
+        const query = clientInput.value;
+        const matches = ClientHistory.searchClients(query);
+
+        if (matches.length > 0) {
+            dropdown.innerHTML = matches.map(client => `
+                <div class="client-history-item" role="option" tabindex="0" data-name="${client.name}" data-project="${client.projectType}">
+                    <div class="client-history-name">${client.name}</div>
+                    <div class="client-history-project">${client.projectType}</div>
+                </div>
+            `).join('');
+            dropdown.classList.add('show');
+
+            // Add click handlers
+            dropdown.querySelectorAll('.client-history-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    clientInput.value = item.dataset.name;
+                    const projectType = document.getElementById('projectType');
+                    if (projectType && item.dataset.project) {
+                        projectType.value = item.dataset.project;
+                    }
+                    dropdown.classList.remove('show');
+                });
+
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        item.click();
+                    }
+                });
+            });
+        } else {
+            dropdown.classList.remove('show');
+        }
+    });
+
+    // Hide dropdown on blur
+    clientInput.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('show'), 200);
+    });
+}
+
+// ============================================================================
+// MAIN INITIALIZATION
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', async function() {
     // Initialize systems
     DocumentRegistry.init();
     SettingsManager.init();
 
-    // Add settings button to the page
+    // Load logo for PDFs
+    await loadLogoForPDF();
+
+    // Add settings button
     const settingsButton = document.createElement('button');
-    settingsButton.innerHTML = '⚙️ Settings';
-    settingsButton.style.cssText = 'position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; background: #1f2937; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000;';
+    settingsButton.className = 'settings-btn';
+    settingsButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Settings
+    `;
+    settingsButton.setAttribute('aria-label', 'Open settings');
     settingsButton.addEventListener('click', () => ModalUI.showSettings());
     document.body.appendChild(settingsButton);
 
-    // Login form - SERVER-SIDE AUTHENTICATION
-    const loginForm = document.getElementById('loginForm');
+    // Check for existing session
     const loginSection = document.getElementById('loginSection');
     const quotationSection = document.getElementById('quotationSection');
 
+    if (SessionManager.isAuthenticated()) {
+        loginSection.classList.add('hidden');
+        quotationSection.classList.remove('hidden');
+        settingsButton.style.display = 'flex';
+        restoreFormData();
+    } else {
+        settingsButton.style.display = 'none';
+    }
+
+    // Login form handling
+    const loginForm = document.getElementById('loginForm');
     if (loginForm) {
         loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -651,9 +1292,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json();
 
                 if (response.ok && data.success) {
+                    SessionManager.createSession();
                     loginSection.classList.add('hidden');
                     quotationSection.classList.remove('hidden');
+                    settingsButton.style.display = 'flex';
                     Toast.success('Login successful');
+                    restoreFormData();
                 } else {
                     if (loginError) {
                         loginError.textContent = data.error || 'Invalid password';
@@ -668,7 +1312,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     loginError.classList.remove('hidden');
                 }
             } finally {
-                // Reset button state
                 if (loginBtn) loginBtn.disabled = false;
                 if (loginText) loginText.classList.remove('hidden');
                 if (loginSpinner) loginSpinner.classList.add('hidden');
@@ -676,45 +1319,69 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Quotation form
+    // Setup form persistence
     const quotationForm = document.getElementById('quotationForm');
-    const addMaterialBtn = document.getElementById('addMaterialBtn');
-    const materialsContainer = document.getElementById('materialsContainer');
-
-    if (materialsContainer) {
-        addMaterialRow();
-    }
-
-    if (addMaterialBtn) {
-        addMaterialBtn.addEventListener('click', addMaterialRow);
-    }
-
     if (quotationForm) {
-        quotationForm.addEventListener('submit', function(e) {
+        // Save on any input change
+        quotationForm.addEventListener('input', saveFormDataDebounced);
+        quotationForm.addEventListener('change', saveFormDataDebounced);
+
+        // Main form submission
+        quotationForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            clearValidationErrors();
+
             const formData = new FormData(quotationForm);
             const quotationData = Object.fromEntries(formData.entries());
             quotationData.materials = JSON.stringify(gatherMaterialsData());
-            generateProfessionalQuotation(quotationData);
-        });
-    }
 
-    const laborTypeSelect = document.getElementById('laborType');
-    const customLaborDiv = document.getElementById('customLaborDiv');
-    const laborCostInput = document.getElementById('laborCost');
+            if (!validateFormData(quotationData)) return;
 
-    if (laborTypeSelect) {
-        laborTypeSelect.addEventListener('change', function() {
-            if (this.value === 'custom') {
-                customLaborDiv.style.display = 'block';
-                laborCostInput.required = true;
-            } else {
-                customLaborDiv.style.display = 'none';
-                laborCostInput.required = false;
+            // Save client to history
+            ClientHistory.addClient(quotationData.clientName, quotationData.projectType);
+
+            setButtonLoading('generateQuotationBtn', true);
+
+            try {
+                await generateProfessionalQuotation(quotationData);
+                Toast.success('Quotation generated successfully');
+            } catch (error) {
+                console.error('Error generating quotation:', error);
+                Toast.error('Failed to generate quotation. Please try again.');
+            } finally {
+                setButtonLoading('generateQuotationBtn', false);
             }
         });
     }
 
+    // Labor type change handler
+    const laborTypeSelect = document.getElementById('laborType');
+    if (laborTypeSelect) {
+        laborTypeSelect.addEventListener('change', handleLaborTypeChange);
+        handleLaborTypeChange(); // Initial state
+    }
+
+    // Character count for description
+    const descriptionTextarea = document.getElementById('projectDescription');
+    if (descriptionTextarea) {
+        descriptionTextarea.addEventListener('input', updateCharCount);
+    }
+
+    // Material row buttons
+    const addMaterialBtn = document.getElementById('addMaterialBtn');
+    const addFirstMaterial = document.getElementById('addFirstMaterial');
+
+    if (addMaterialBtn) {
+        addMaterialBtn.addEventListener('click', addMaterialRow);
+    }
+    if (addFirstMaterial) {
+        addFirstMaterial.addEventListener('click', addMaterialRow);
+    }
+
+    // Setup client history dropdown
+    setupClientHistory();
+
+    // Get form data helper
     function getFormData() {
         const formData = new FormData(document.getElementById('quotationForm'));
         const data = Object.fromEntries(formData.entries());
@@ -723,246 +1390,274 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Document generation event listeners
-    document.getElementById('generateAcceptance')?.addEventListener('click', function() {
+    document.getElementById('generateAcceptance')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            generateAcceptanceLetter(data);
+        if (!validateFormData(data)) return;
+
+        try {
+            await generateAcceptanceLetter(data);
+            Toast.success('Acceptance Letter generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
     document.getElementById('generatePayment')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            const paymentDetails = await ModalUI.promptPaymentDetails();
-            if (paymentDetails) {
-                generatePaymentRequest(data, paymentDetails);
-            }
+        if (!validateFormData(data)) return;
+
+        const paymentDetails = await ModalUI.promptPaymentDetails();
+        if (!paymentDetails) return;
+
+        try {
+            await generatePaymentRequest(data, paymentDetails);
+            Toast.success('Payment Request generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
     document.getElementById('generateInvoice')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            const invoiceDetails = await ModalUI.promptInvoiceDetails();
-            if (invoiceDetails) {
-                generateInvoice(data, invoiceDetails);
-            }
+        if (!validateFormData(data)) return;
+
+        const invoiceDetails = await ModalUI.promptInvoiceDetails();
+        if (!invoiceDetails) return;
+
+        try {
+            await generateInvoice(data, invoiceDetails);
+            Toast.success('Invoice generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
-    document.getElementById('generateDelivery')?.addEventListener('click', function() {
+    document.getElementById('generateDelivery')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            generateDeliveryNote(data);
+        if (!validateFormData(data)) return;
+
+        try {
+            await generateDeliveryNote(data);
+            Toast.success('Delivery Note generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
-    document.getElementById('generateContract')?.addEventListener('click', function() {
+    document.getElementById('generateContract')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            generateContractAgreement(data);
+        if (!validateFormData(data)) return;
+
+        try {
+            await generateContractAgreement(data);
+            Toast.success('Contract Agreement generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
-    document.getElementById('generateRecommendation')?.addEventListener('click', function() {
+    document.getElementById('generateRecommendation')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            generateRecommendationLetter(data);
+        if (!validateFormData(data)) return;
+
+        try {
+            await generateRecommendationLetter(data);
+            Toast.success('Recommendation Letter generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
-    document.getElementById('generateReceipt')?.addEventListener('click', function() {
+    document.getElementById('generateReceipt')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            generateReceipt(data);
+        if (!validateFormData(data)) return;
+
+        const receiptDetails = await ModalUI.promptReceiptDetails();
+        if (!receiptDetails) return;
+
+        try {
+            await generateReceipt(data, receiptDetails);
+            Toast.success('Receipt generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
     document.getElementById('generateLPO')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            const lpoDetails = await ModalUI.promptLPODetails();
-            if (lpoDetails) {
-                generateLPO(data, lpoDetails);
-            }
+        if (!validateFormData(data)) return;
+
+        const lpoDetails = await ModalUI.promptLPODetails();
+        if (!lpoDetails) return;
+
+        try {
+            await generateLPO(data, lpoDetails);
+            Toast.success('Purchase Order generated');
+        } catch (error) {
+            Toast.error('Failed to generate document');
         }
     });
 
     document.getElementById('generateAll')?.addEventListener('click', async function() {
         const data = getFormData();
-        if (validateFormData(data)) {
-            const paymentDetails = await ModalUI.promptPaymentDetails();
-            if (!paymentDetails) return;
+        if (!validateFormData(data)) return;
 
-            const invoiceDetails = await ModalUI.promptInvoiceDetails();
-            if (!invoiceDetails) return;
+        // Collect all required details first
+        const paymentDetails = await ModalUI.promptPaymentDetails();
+        if (!paymentDetails) return;
 
-            const lpoDetails = await ModalUI.promptLPODetails();
-            if (!lpoDetails) return;
+        const invoiceDetails = await ModalUI.promptInvoiceDetails();
+        if (!invoiceDetails) return;
 
-            const generators = [
-                () => generateAcceptanceLetter(data),
-                () => generatePaymentRequest(data, paymentDetails),
-                () => generateInvoice(data, invoiceDetails),
-                () => generateDeliveryNote(data),
-                () => generateContractAgreement(data),
-                () => generateRecommendationLetter(data),
-                () => generateReceipt(data),
-                () => generateLPO(data, lpoDetails)
-            ];
+        const receiptDetails = await ModalUI.promptReceiptDetails();
+        if (!receiptDetails) return;
 
-            generators.forEach((generator, index) => {
-                setTimeout(() => {
-                    generator();
-                }, index * 500);
-            });
+        const lpoDetails = await ModalUI.promptLPODetails();
+        if (!lpoDetails) return;
 
-            alert('All documents are being generated. Please wait for all downloads to complete.');
+        // Save client to history
+        ClientHistory.addClient(data.clientName, data.projectType);
+
+        setButtonLoading('generateAll', true);
+        ProgressOverlay.show('Generating All Documents', 9);
+
+        const generators = [
+            { name: 'Quotation', fn: () => generateProfessionalQuotation(data) },
+            { name: 'Acceptance Letter', fn: () => generateAcceptanceLetter(data) },
+            { name: 'Payment Request', fn: () => generatePaymentRequest(data, paymentDetails) },
+            { name: 'Invoice', fn: () => generateInvoice(data, invoiceDetails) },
+            { name: 'Delivery Note', fn: () => generateDeliveryNote(data) },
+            { name: 'Contract Agreement', fn: () => generateContractAgreement(data) },
+            { name: 'Recommendation Letter', fn: () => generateRecommendationLetter(data) },
+            { name: 'Receipt', fn: () => generateReceipt(data, receiptDetails) },
+            { name: 'Purchase Order', fn: () => generateLPO(data, lpoDetails) }
+        ];
+
+        let completed = 0;
+
+        for (const generator of generators) {
+            ProgressOverlay.update(completed, `Generating ${generator.name}...`);
+
+            try {
+                await generator.fn();
+                await new Promise(resolve => setTimeout(resolve, 300)); // Small delay between downloads
+            } catch (error) {
+                console.error(`Error generating ${generator.name}:`, error);
+            }
+
+            completed++;
         }
+
+        ProgressOverlay.update(completed, 'Complete!');
+
+        setTimeout(() => {
+            ProgressOverlay.hide();
+            setButtonLoading('generateAll', false);
+            Toast.success('All documents generated successfully!');
+        }, 500);
     });
 
-    function validateFormData(data) {
-        if (!data.clientName || !data.projectType) {
-            alert('Please fill in Client Name and Project Type before generating documents.');
-            return false;
-        }
-
-        const materials = JSON.parse(data.materials);
-        if (materials.length === 0) {
-            alert('Please add at least one material before generating documents.');
-            return false;
-        }
-
-        return true;
-    }
+    // Extend session on activity
+    document.addEventListener('click', () => SessionManager.extendSession());
+    document.addEventListener('keypress', () => SessionManager.extendSession());
 });
 
 // ============================================================================
 // DOCUMENT GENERATORS
 // ============================================================================
 
-// 1. QUOTATION (UNCHANGED AS REQUESTED)
-function generateProfessionalQuotation(data) {
+// 1. QUOTATION
+async function generateProfessionalQuotation(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
-    const margin = 20;
-
-    const colors = {
-        primary: [31, 41, 55],
-        secondary: [107, 114, 128],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
+    const margin = 15;
+    let pageNum = 1;
 
     function addHeader() {
-        doc.setFillColor(...colors.primary);
-        doc.rect(0, 0, pageWidth, 25, 'F');
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
-        doc.text("PINTOREX", margin, 15);
-
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.text("CONSTRUCTION LIMITED", margin, 20);
-
-        doc.setFontSize(8);
-        doc.text([
-            "Tel: +254 769 157174",
-            "Email: pintorexkenya@gmail.com"
-        ], pageWidth - margin, 15, { align: "right" });
+        addProfessionalHeader(doc, 'QUOTATION');
     }
 
     function addFooter() {
-        const footerY = pageHeight - 15;
-        doc.setFillColor(...colors.primary);
-        doc.rect(0, footerY, pageWidth, 15, 'F');
-
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7);
-        doc.text([
-            "Pintorex Construction Limited | Building Excellence, Crafting Dreams",
-            "+254 769 157174 | pintorexkenya@gmail.com"
-        ], pageWidth / 2, footerY + 6, { align: "center" });
+        addProfessionalFooter(doc, pageNum);
     }
 
-    let yPos = 35;
-
-    function checkPageBreak(height) {
-        if (yPos + height > pageHeight - 25) {
-            doc.addPage();
-            addHeader();
-            addFooter();
-            yPos = 35;
-        }
-    }
+    let yPos = 45;
 
     addHeader();
     addFooter();
 
     const quotationNumber = DocumentRegistry.generateNumber('quotation');
 
-    doc.setTextColor(...colors.primary);
+    // Title
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(18);
     doc.text("PROJECT ESTIMATE", margin, yPos);
 
-    doc.setDrawColor(...colors.accent);
-    doc.setLineWidth(0.5);
-    doc.line(margin, yPos + 4, margin + 50, yPos + 4);
+    doc.setDrawColor(...Colors.primary);
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos + 3, margin + 55, yPos + 3);
 
-    yPos += 12;
+    yPos += 15;
 
-    checkPageBreak(25);
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 25, 'F');
+    // Client info box
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 28, 3, 3, 'F');
 
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...Colors.text);
     doc.text("PREPARED FOR:", margin + 5, yPos + 8);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text([
-        data.clientName,
-        "Project Type: " + data.projectType
-    ], margin + 5, yPos + 16);
-
-    doc.setFont("helvetica", "bold");
-    doc.text([
-        "QUOTATION NO: " + quotationNumber,
-        "DATE: " + new Date().toLocaleDateString('en-GB')
-    ], pageWidth - margin - 5, yPos + 16, { align: "right" });
-
-    yPos += 30;
-
-    checkPageBreak(25);
-    doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
-    doc.text("PROJECT SCOPE", margin, yPos);
+    doc.text(data.clientName, margin + 5, yPos + 16);
+    doc.setFontSize(9);
+    doc.text("Project: " + data.projectType, margin + 5, yPos + 23);
 
-    yPos += 6;
-
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 15, 'F');
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...colors.text);
-    const descriptionLines = doc.splitTextToSize(data.projectDescription, pageWidth - (2 * margin) - 10);
-    doc.text(descriptionLines, margin + 5, yPos + 5);
-
-    yPos += 20 + (descriptionLines.length - 1) * 3.5;
-
-    checkPageBreak(10);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setFontSize(9);
+    doc.text([
+        "Quotation: " + quotationNumber,
+        "Date: " + new Date().toLocaleDateString('en-GB')
+    ], pageWidth - margin - 5, yPos + 14, { align: "right" });
+
+    yPos += 35;
+
+    // Project scope
+    if (data.projectDescription) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(...Colors.secondary);
+        doc.text("PROJECT SCOPE", margin, yPos);
+
+        yPos += 6;
+
+        doc.setFillColor(...Colors.subtle);
+        const descLines = doc.splitTextToSize(data.projectDescription, pageWidth - (2 * margin) - 10);
+        const descHeight = Math.max(15, descLines.length * 4.5 + 8);
+        doc.roundedRect(margin, yPos, pageWidth - (2 * margin), descHeight, 3, 3, 'F');
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...Colors.text);
+        doc.text(descLines, margin + 5, yPos + 6);
+
+        yPos += descHeight + 8;
+    }
+
+    // Materials section
+    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 20, () => {
+        pageNum++;
+        addHeader();
+        addFooter();
+    });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...Colors.secondary);
     doc.text("MATERIALS BREAKDOWN", margin, yPos);
 
     yPos += 6;
@@ -970,7 +1665,7 @@ function generateProfessionalQuotation(data) {
     const materials = JSON.parse(data.materials);
     doc.autoTable({
         startY: yPos,
-        head: [["No.", "Item Description", "Unit", "Qty", "Unit Price (KES)", "Amount (KES)"]],
+        head: [["#", "Description", "Unit", "Qty", "Unit Price (KES)", "Amount (KES)"]],
         body: materials.map((m, index) => [
             index + 1,
             m.name,
@@ -980,55 +1675,65 @@ function generateProfessionalQuotation(data) {
             numberWithCommas(m.quantity * m.unitPrice)
         ]),
         styles: {
-            fontSize: 8,
-            textColor: [...colors.text],
-            cellPadding: 2
+            fontSize: 9,
+            textColor: Colors.text,
+            cellPadding: 4
         },
         headStyles: {
-            fillColor: [...colors.primary],
-            textColor: [255, 255, 255],
+            fillColor: Colors.secondary,
+            textColor: Colors.white,
             fontSize: 9,
             fontStyle: 'bold',
-            cellPadding: 3
+            cellPadding: 5
         },
         columnStyles: {
-            0: { cellWidth: 15, halign: 'center' },
+            0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
-            2: { cellWidth: 25, halign: 'center' },
-            3: { cellWidth: 25, halign: 'center' },
-            4: { cellWidth: 35, halign: 'right' },
-            5: { cellWidth: 35, halign: 'right' }
+            2: { cellWidth: 22, halign: 'center' },
+            3: { cellWidth: 20, halign: 'center' },
+            4: { cellWidth: 32, halign: 'right' },
+            5: { cellWidth: 32, halign: 'right' }
         },
         alternateRowStyles: {
             fillColor: [250, 250, 250]
         },
         margin: { left: margin, right: margin },
         didDrawPage: function(data) {
+            pageNum++;
             addHeader();
             addFooter();
         }
     });
 
-    yPos = doc.lastAutoTable.finalY + 10;
+    yPos = doc.lastAutoTable.finalY + 12;
+
+    // Financial summary
+    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 85, () => {
+        pageNum++;
+        addHeader();
+        addFooter();
+    });
 
     const totals = calculateTotals(data);
 
-    checkPageBreak(85);
-    doc.setFillColor(...colors.primary);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 15, 'F');
+    // Summary header
+    doc.setFillColor(...Colors.secondary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
 
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("FINANCIAL SUMMARY", margin + 5, yPos + 9.5);
+
+    yPos += 16;
+
+    // Summary content
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 52, 3, 3, 'F');
+
+    let summaryY = yPos + 10;
+    doc.setTextColor(...Colors.text);
     doc.setFontSize(10);
-    doc.text("FINANCIAL SUMMARY", margin + 5, yPos + 10);
-
-    yPos += 15;
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 60, 'F');
-
-    let summaryY = yPos + 8;
-    doc.setTextColor(...colors.text);
-    doc.setFontSize(9);
 
     const summaryItems = [
         ["Materials Total:", `KES ${numberWithCommas(totals.materialsTotal)}`],
@@ -1039,64 +1744,62 @@ function generateProfessionalQuotation(data) {
     ];
 
     summaryItems.forEach(([label, value]) => {
-        doc.text(label, margin + 5, summaryY);
-        doc.text(value, pageWidth - margin - 5, summaryY, { align: "right" });
-        summaryY += 10;
+        doc.setFont("helvetica", "normal");
+        doc.text(label, margin + 8, summaryY);
+        doc.setFont("helvetica", "bold");
+        doc.text(value, pageWidth - margin - 8, summaryY, { align: "right" });
+        summaryY += 9;
     });
 
-    yPos += 60;
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 20, 'F');
-    doc.setTextColor(...colors.primary);
+    yPos += 55;
+
+    // Total amount
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("TOTAL AMOUNT:", margin + 5, yPos + 13);
-    doc.setFontSize(11);
-    doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 13, { align: "right" });
+    doc.setFontSize(12);
+    doc.text("TOTAL AMOUNT:", margin + 8, yPos + 12);
+    doc.setFontSize(14);
+    doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
     doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
 }
 
-// 2. ACCEPTANCE LETTER - REFINED
-function generateAcceptanceLetter(data) {
+// 2. ACCEPTANCE LETTER
+async function generateAcceptanceLetter(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('acceptance');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'ACCEPTANCE');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
     const totals = calculateTotals(data);
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("ACCEPTANCE OF CONTRACT", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 50, yPos + 3, pageWidth / 2 + 50, yPos + 3);
 
-    yPos += 12;
+    yPos += 15;
 
-    // Document info
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 18, 'F');
+    // Reference info
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text(`Reference: ${documentNumber}`, margin + 5, yPos + 8);
     doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin - 5, yPos + 8, { align: "right" });
 
@@ -1104,53 +1807,48 @@ function generateAcceptanceLetter(data) {
     doc.setFontSize(8);
     doc.text("Official Contract Acceptance", margin + 5, yPos + 14);
 
-    yPos += 25;
+    yPos += 26;
 
     // Recipient
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...colors.text);
+    doc.setFontSize(11);
+    doc.setTextColor(...Colors.text);
     doc.text(data.clientName, margin, yPos);
-    yPos += 10;
+    yPos += 12;
 
     // Subject
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 10, 'F');
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 10, 2, 2, 'F');
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.white);
     doc.text(`RE: ${data.projectType.toUpperCase()}`, margin + 5, yPos + 7);
 
-    yPos += 16;
+    yPos += 18;
 
-    // Main body paragraph
+    // Main body
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
 
     const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
 
     const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
     doc.text(bodyLines, margin, yPos);
-    yPos += (bodyLines.length * 5) + 10;
+    yPos += (bodyLines.length * 5) + 12;
 
     // Project details
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 35, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 32, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 32, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("PROJECT DETAILS:", margin + 5, yPos + 8);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
 
     let detailY = yPos + 15;
     const projectDetails = [
@@ -1164,7 +1862,7 @@ function generateAcceptanceLetter(data) {
         detailY += 5;
     });
 
-    yPos += 40;
+    yPos += 42;
 
     // Closing
     doc.setFont("helvetica", "normal");
@@ -1172,18 +1870,13 @@ function generateAcceptanceLetter(data) {
     doc.text("Yours faithfully,", margin, yPos);
     yPos += 18;
 
-    // Signature
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 35, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 35, 'F');
+    // Signature area
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, 80, 32, 3, 3, 'F');
 
     let sigY = yPos + 8;
     doc.setLineWidth(0.3);
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.line(margin + 5, sigY, margin + 65, sigY);
 
     sigY += 5;
@@ -1195,66 +1888,59 @@ function generateAcceptanceLetter(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin + 5, sigY);
 
-    sigY += 7;
+    sigY += 6;
     doc.setFontSize(8);
-    doc.setTextColor(107, 114, 128);
+    doc.setTextColor(...Colors.textMuted);
     doc.text("Tel: +254 769 157174", margin + 5, sigY);
-    sigY += 4;
-    doc.text("Email: pintorexkenya@gmail.com", margin + 5, sigY);
 
     // Seal
     const sealX = pageWidth - margin - 22;
-    const sealY = yPos + 17;
-    doc.setDrawColor(...colors.primary);
+    const sealY = yPos + 16;
+    doc.setDrawColor(...Colors.secondary);
     doc.setLineWidth(0.7);
     doc.circle(sealX, sealY, 13, 'S');
     doc.setFontSize(6);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("COMPANY", sealX, sealY - 3, { align: "center" });
     doc.text("SEAL", sealX, sealY + 2, { align: "center" });
 
-    doc.save(`Pintorex-Contract-Acceptance-${documentNumber}.pdf`);
+    doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
 }
 
-// 3. PAYMENT REQUEST - REFINED
-function generatePaymentRequest(data, paymentDetails) {
+// 3. PAYMENT REQUEST
+async function generatePaymentRequest(data, paymentDetails) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('payment');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'PAYMENT REQUEST');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
+    const totals = calculateTotals(data);
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("PAYMENT REQUEST", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 40, yPos + 3, pageWidth / 2 + 40, yPos + 3);
 
-    yPos += 12;
+    yPos += 15;
 
     // Request info
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 25, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 25, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text(`Request No: ${documentNumber}`, margin + 5, yPos + 8);
     doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin - 5, yPos + 8, { align: "right" });
 
@@ -1265,15 +1951,7 @@ function generatePaymentRequest(data, paymentDetails) {
 
     yPos += 32;
 
-    // Calculate totals
-    const totals = calculateTotals(data);
-
-    // Payment breakdown
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 80, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
+    // Payment breakdown table
     doc.autoTable({
         startY: yPos,
         head: [["Description", "Amount (KES)"]],
@@ -1285,19 +1963,19 @@ function generatePaymentRequest(data, paymentDetails) {
             [`Contingency (${totals.contingencyPercentage}%)`, numberWithCommas(totals.contingency)]
         ],
         styles: {
-            fontSize: 9,
-            textColor: [17, 24, 39],
-            cellPadding: 4
+            fontSize: 10,
+            textColor: Colors.text,
+            cellPadding: 5
         },
         headStyles: {
-            fillColor: [31, 41, 55],
-            textColor: [255, 255, 255],
+            fillColor: Colors.secondary,
+            textColor: Colors.white,
             fontSize: 10,
             fontStyle: 'bold'
         },
         columnStyles: {
             0: { cellWidth: 120 },
-            1: { cellWidth: 60, halign: 'right' }
+            1: { cellWidth: 50, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -1306,70 +1984,53 @@ function generatePaymentRequest(data, paymentDetails) {
     yPos = doc.lastAutoTable.finalY + 8;
 
     // Total
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 18, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 16, 3, 3, 'F');
 
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 16, 'F');
-
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text("AMOUNT DUE:", margin + 5, yPos + 11);
     doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
 
-    yPos += 23;
+    yPos += 24;
 
-    // Payment information
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 42, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 42, 'F');
+    // Bank details
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 45, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("BANK DETAILS", margin + 5, yPos + 10);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
 
     let payY = yPos + 18;
     const paymentInfo = [
         `Bank: ${paymentDetails.bankName}`,
         `Account: ${paymentDetails.accountNumber}`,
         `Account Name: ${paymentDetails.accountName}`,
-        `${paymentDetails.branch ? 'Branch: ' + paymentDetails.branch : ''}`,
+        paymentDetails.branch ? `Branch: ${paymentDetails.branch}` : null,
         `Payment Terms: Net 30 days`
-    ];
+    ].filter(Boolean);
 
     paymentInfo.forEach(info => {
-        if (info) {
-            doc.text(info, margin + 5, payY);
-            payY += 5;
-        }
+        doc.text(info, margin + 5, payY);
+        payY += 5;
     });
 
-    yPos += 50;
+    yPos += 52;
 
     // Signature
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text("Prepared By:", margin, yPos);
-    yPos += 8;
+    yPos += 10;
 
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
     yPos += 5;
@@ -1383,49 +2044,43 @@ function generatePaymentRequest(data, paymentDetails) {
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
 
-// 4. INVOICE - REFINED WITH LINKING
-function generateInvoice(data, invoiceDetails) {
+// 4. INVOICE
+async function generateInvoice(data, invoiceDetails) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('invoice');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'TAX INVOICE');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("TAX INVOICE", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 30, yPos + 3, pageWidth / 2 + 30, yPos + 3);
 
-    yPos += 12;
+    yPos += 15;
 
     // Invoice details
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 32, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 32, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text("INVOICE TO:", margin + 5, yPos + 8);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     doc.text([
         data.clientName,
         "Project: " + data.projectType
@@ -1437,12 +2092,12 @@ function generateInvoice(data, invoiceDetails) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     const invoiceInfo = [
-        `INVOICE NO: ${documentNumber}`,
-        `ORDER NO: ${invoiceDetails.orderNumber}`,
-        invoiceDetails.deliveryNumber ? `DELIVERY NOTE: ${invoiceDetails.deliveryNumber}` : '',
-        `DATE: ${new Date().toLocaleDateString('en-GB')}`,
-        `DUE DATE: ${dueDate.toLocaleDateString('en-GB')}`
-    ].filter(info => info);
+        `Invoice: ${documentNumber}`,
+        `Order: ${invoiceDetails.orderNumber}`,
+        invoiceDetails.deliveryNumber ? `Delivery: ${invoiceDetails.deliveryNumber}` : null,
+        `Date: ${new Date().toLocaleDateString('en-GB')}`,
+        `Due: ${dueDate.toLocaleDateString('en-GB')}`
+    ].filter(Boolean);
 
     let infoY = yPos + 8;
     invoiceInfo.forEach(info => {
@@ -1476,33 +2131,28 @@ function generateInvoice(data, invoiceDetails) {
         ]);
     }
 
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 60, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.autoTable({
         startY: yPos,
-        head: [["No.", "Description", "Unit", "Qty", "Unit Price (KES)", "Amount (KES)"]],
+        head: [["#", "Description", "Unit", "Qty", "Unit Price", "Amount"]],
         body: tableData,
         styles: {
-            fontSize: 8,
-            textColor: [17, 24, 39],
-            cellPadding: 3
+            fontSize: 9,
+            textColor: Colors.text,
+            cellPadding: 4
         },
         headStyles: {
-            fillColor: [31, 41, 55],
-            textColor: [255, 255, 255],
+            fillColor: Colors.secondary,
+            textColor: Colors.white,
             fontSize: 9,
             fontStyle: 'bold'
         },
         columnStyles: {
-            0: { cellWidth: 15, halign: 'center' },
+            0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
             2: { cellWidth: 20, halign: 'center' },
-            3: { cellWidth: 20, halign: 'right' },
-            4: { cellWidth: 35, halign: 'right' },
-            5: { cellWidth: 35, halign: 'right' }
+            3: { cellWidth: 18, halign: 'right' },
+            4: { cellWidth: 30, halign: 'right' },
+            5: { cellWidth: 30, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -1510,19 +2160,14 @@ function generateInvoice(data, invoiceDetails) {
 
     yPos = doc.lastAutoTable.finalY + 8;
 
-    // Financial summary
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 60, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 40, 'F');
+    // Summary
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 35, 3, 3, 'F');
 
     let summaryY = yPos + 8;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
 
     const summaryItems = [
         ["Subtotal:", `KES ${numberWithCommas(totals.subtotal)}`],
@@ -1536,24 +2181,24 @@ function generateInvoice(data, invoiceDetails) {
         summaryY += 8;
     });
 
-    yPos += 40;
+    yPos += 38;
 
     // Total
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 16, 'F');
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 16, 3, 3, 'F');
 
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text("TOTAL AMOUNT:", margin + 5, yPos + 11);
     doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
 
-    yPos += 20;
+    yPos += 22;
 
     // Disclaimer
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.setTextColor(107, 114, 128);
+    doc.setTextColor(...Colors.textMuted);
     const disclaimer = "This is a tax invoice issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
     const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
@@ -1561,52 +2206,45 @@ function generateInvoice(data, invoiceDetails) {
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
 
-// 5. DELIVERY NOTE - REFINED WITH LINKING
-function generateDeliveryNote(data) {
+// 5. DELIVERY NOTE
+async function generateDeliveryNote(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('delivery');
     const lastInvoice = DocumentRegistry.getLastDocument('invoice');
 
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
+    addProfessionalHeader(doc, 'DELIVERY NOTE');
+    addProfessionalFooter(doc);
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
-
-    let yPos = 35;
+    let yPos = 48;
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("DELIVERY NOTE", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 35, yPos + 3, pageWidth / 2 + 35, yPos + 3);
 
-    yPos += 12;
+    yPos += 15;
 
     // Delivery details
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 28, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 28, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text(`Delivery Note: ${documentNumber}`, margin + 5, yPos + 8);
     doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin - 5, yPos + 8, { align: "right" });
 
     if (lastInvoice) {
-        doc.text(`Invoice No: ${lastInvoice.number}`, pageWidth - margin - 5, yPos + 14, { align: "right" });
+        doc.text(`Invoice: ${lastInvoice.number}`, pageWidth - margin - 5, yPos + 14, { align: "right" });
     }
 
     doc.setFont("helvetica", "normal");
@@ -1619,14 +2257,9 @@ function generateDeliveryNote(data) {
     // Materials table
     const materials = JSON.parse(data.materials);
 
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 60, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.autoTable({
         startY: yPos,
-        head: [["No.", "Description", "Unit", "Quantity", "Remarks"]],
+        head: [["#", "Description", "Unit", "Quantity", "Remarks"]],
         body: materials.map((m, i) => [
             i + 1,
             m.name,
@@ -1636,41 +2269,36 @@ function generateDeliveryNote(data) {
         ]),
         styles: {
             fontSize: 9,
-            textColor: [17, 24, 39],
-            cellPadding: 3
+            textColor: Colors.text,
+            cellPadding: 5
         },
         headStyles: {
-            fillColor: [31, 41, 55],
-            textColor: [255, 255, 255],
+            fillColor: Colors.secondary,
+            textColor: Colors.white,
             fontSize: 9,
             fontStyle: 'bold'
         },
         columnStyles: {
-            0: { cellWidth: 20, halign: 'center' },
+            0: { cellWidth: 15, halign: 'center' },
             1: { cellWidth: 'auto' },
-            2: { cellWidth: 28, halign: 'center' },
-            3: { cellWidth: 28, halign: 'right' },
-            4: { cellWidth: 35, halign: 'center' }
+            2: { cellWidth: 25, halign: 'center' },
+            3: { cellWidth: 25, halign: 'right' },
+            4: { cellWidth: 40, halign: 'center' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 15;
+    yPos = doc.lastAutoTable.finalY + 18;
 
     // Signature section
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.text("Delivered By:", margin, yPos);
     doc.text("Received By:", margin + 95, yPos);
 
     yPos += 12;
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 65, yPos);
     doc.line(margin + 95, yPos, margin + 160, yPos);
@@ -1684,33 +2312,37 @@ function generateDeliveryNote(data) {
     doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
 
-// 6. CONTRACT AGREEMENT - PROFESSIONALLY REFINED
-function generateContractAgreement(data) {
+// 6. CONTRACT AGREEMENT
+async function generateContractAgreement(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
+    let pageNum = 1;
+
+    function addHeader() {
+        addProfessionalHeader(doc, 'CONTRACT');
+    }
+
+    function addFooter() {
+        addProfessionalFooter(doc, pageNum);
+    }
 
     const documentNumber = DocumentRegistry.generateNumber('contract');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addHeader();
+    addFooter();
 
-    let yPos = 35;
+    let yPos = 48;
+    const totals = calculateTotals(data);
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("CONSTRUCTION CONTRACT", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 55, yPos + 3, pageWidth / 2 + 55, yPos + 3);
 
@@ -1722,22 +2354,19 @@ function generateContractAgreement(data) {
 
     yPos += 15;
 
-    // Calculate totals
-    const totals = calculateTotals(data);
-
     // Parties
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("PARTIES TO THE CONTRACT", margin, yPos);
     yPos += 7;
 
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 26, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 26, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text("CONTRACTOR:", margin + 5, yPos + 8);
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin + 5, yPos + 14);
@@ -1753,60 +2382,45 @@ function generateContractAgreement(data) {
     yPos += 33;
 
     // Scope
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 28, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("SCOPE OF WORK", margin, yPos);
     yPos += 7;
 
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 18, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text(`Project Type: ${data.projectType}`, margin + 5, yPos + 8);
-    const descLines = doc.splitTextToSize(`Description: ${data.projectDescription}`, pageWidth - (2 * margin) - 10);
+    const descLines = doc.splitTextToSize(`Description: ${data.projectDescription || 'As per agreement'}`, pageWidth - (2 * margin) - 10);
     doc.text(descLines, margin + 5, yPos + 14);
 
     yPos += 25;
 
     // Contract value
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 15, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 14, 'F');
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.white);
     doc.text("CONTRACT VALUE:", margin + 5, yPos + 9.5);
     doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 9.5, { align: "right" });
 
-    yPos += 21;
+    yPos += 22;
 
-    // Terms - Professional Kenya-specific
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 50, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
+    // Terms
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("TERMS AND CONDITIONS", margin, yPos);
     yPos += 7;
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
 
     const terms = [
         "1. The Contractor shall execute and complete the Works in accordance with the Contract Documents and the instructions of the Employer's authorized representative.",
@@ -1818,8 +2432,9 @@ function generateContractAgreement(data) {
 
     terms.forEach(term => {
         yPos = SmartSpacing.checkAndAddPage(doc, yPos, 15, () => {
-            addDocumentHeader(doc);
-            addDocumentFooter(doc);
+            pageNum++;
+            addHeader();
+            addFooter();
         });
 
         const lines = doc.splitTextToSize(term, pageWidth - (2 * margin));
@@ -1830,83 +2445,72 @@ function generateContractAgreement(data) {
     yPos += 10;
 
     // Signatures
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 40, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
+    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 50, () => {
+        pageNum++;
+        addHeader();
+        addFooter();
     });
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.text("SIGNATURES", margin, yPos);
     yPos += 8;
+
+    // Two column signature boxes
+    const colWidth = (pageWidth - (2 * margin) - 10) / 2;
+
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, colWidth, 35, 3, 3, 'F');
+    doc.roundedRect(margin + colWidth + 10, yPos, colWidth, 35, 3, 3, 'F');
 
     // Contractor signature
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
-    doc.text("CONTRACTOR:", margin, yPos);
-    yPos += 8;
-    doc.setDrawColor(107, 114, 128);
+    doc.setTextColor(...Colors.text);
+    doc.text("CONTRACTOR:", margin + 5, yPos + 8);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
-    doc.line(margin, yPos, margin + 55, yPos);
-    yPos += 5;
+    doc.line(margin + 5, yPos + 18, margin + colWidth - 5, yPos + 18);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text("Signature & Date", margin, yPos);
-    yPos += 4;
-    doc.text("Pintorex Construction Limited", margin, yPos);
-
-    yPos += 12;
+    doc.text("Signature & Date", margin + 5, yPos + 23);
+    doc.text("Pintorex Construction Limited", margin + 5, yPos + 28);
 
     // Client signature
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("CLIENT:", margin, yPos);
-    yPos += 8;
-    doc.line(margin, yPos, margin + 55, yPos);
-    yPos += 5;
+    doc.text("CLIENT:", margin + colWidth + 15, yPos + 8);
+    doc.line(margin + colWidth + 15, yPos + 18, pageWidth - margin - 5, yPos + 18);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text("Signature & Date", margin, yPos);
-    yPos += 4;
-    doc.text(data.clientName, margin, yPos);
+    doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
+    doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
 
     doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
 }
 
-// 7. RECOMMENDATION LETTER - REFINED
-function generateRecommendationLetter(data) {
+// 7. RECOMMENDATION LETTER
+async function generateRecommendationLetter(data) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('recommendation');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'RECOMMENDATION');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("RECOMMENDATION LETTER", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 55, yPos + 3, pageWidth / 2 + 55, yPos + 3);
 
@@ -1921,7 +2525,7 @@ function generateRecommendationLetter(data) {
     // Date
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
 
     yPos += 15;
@@ -1946,11 +2550,6 @@ function generateRecommendationLetter(data) {
         if (para === "") {
             yPos += 5;
         } else {
-            yPos = SmartSpacing.checkAndAddPage(doc, yPos, 15, () => {
-                addDocumentHeader(doc);
-                addDocumentFooter(doc);
-            });
-
             const lines = doc.splitTextToSize(para, pageWidth - (2 * margin));
             doc.text(lines, margin, yPos);
             yPos += (lines.length * 5);
@@ -1960,15 +2559,10 @@ function generateRecommendationLetter(data) {
     yPos += 15;
 
     // Signature
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.text("Yours faithfully,", margin, yPos);
     yPos += 15;
 
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
     yPos += 5;
@@ -1983,33 +2577,29 @@ function generateRecommendationLetter(data) {
     doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
 }
 
-// 8. RECEIPT - REFINED
-function generateReceipt(data) {
+// 8. RECEIPT
+async function generateReceipt(data, receiptDetails) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('receipt');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
+    const totals = calculateTotals(data);
+    const amountPaid = receiptDetails.amountPaid ? parseFloat(receiptDetails.amountPaid) : totals.total;
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'RECEIPT');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text("OFFICIAL RECEIPT", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 38, yPos + 3, pageWidth / 2 + 38, yPos + 3);
 
@@ -2021,68 +2611,75 @@ function generateReceipt(data) {
 
     yPos += 15;
 
-    // Calculate total
-    const totals = calculateTotals(data);
-
     // Receipt details
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 48, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 60, 3, 3, 'F');
 
-    let detailY = yPos + 10;
+    let detailY = yPos + 12;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.setTextColor(...colors.text);
-    doc.text("RECEIVED FROM:", margin + 5, detailY);
+    doc.setTextColor(...Colors.text);
+    doc.text("RECEIVED FROM:", margin + 8, detailY);
 
-    detailY += 7;
+    detailY += 8;
     doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text(data.clientName, margin + 8, detailY);
+
+    detailY += 12;
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text(data.clientName, margin + 5, detailY);
+    doc.text("AMOUNT:", margin + 8, detailY);
+    doc.setFont("helvetica", "normal");
+    doc.text(`KES ${numberWithCommas(amountPaid)}`, margin + 35, detailY);
 
     detailY += 10;
     doc.setFont("helvetica", "bold");
-    doc.text("AMOUNT:", margin + 5, detailY);
+    doc.text("FOR:", margin + 8, detailY);
     doc.setFont("helvetica", "normal");
-    doc.text(`KES ${numberWithCommas(totals.total)}`, margin + 28, detailY);
+    doc.text(data.projectType, margin + 35, detailY);
 
     detailY += 10;
     doc.setFont("helvetica", "bold");
-    doc.text("FOR:", margin + 5, detailY);
+    doc.text("DATE:", margin + 8, detailY);
     doc.setFont("helvetica", "normal");
-    doc.text(data.projectType, margin + 28, detailY);
+    doc.text(new Date().toLocaleDateString('en-GB'), margin + 35, detailY);
 
-    detailY += 10;
-    doc.setFont("helvetica", "bold");
-    doc.text("DATE:", margin + 5, detailY);
-    doc.setFont("helvetica", "normal");
-    doc.text(new Date().toLocaleDateString('en-GB'), margin + 28, detailY);
-
-    yPos += 58;
+    yPos += 68;
 
     // Payment method
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text("Payment Method: _____________________", margin, yPos);
-
-    yPos += 20;
-
-    // Signature
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(...Colors.border);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 25, 3, 3, 'S');
 
     doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...Colors.secondary);
+    doc.text("PAYMENT DETAILS", margin + 5, yPos + 8);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...Colors.text);
+    doc.text(`Method: ${receiptDetails.paymentMethod}`, margin + 5, yPos + 16);
+    if (receiptDetails.referenceNumber) {
+        doc.text(`Reference: ${receiptDetails.referenceNumber}`, margin + 80, yPos + 16);
+    }
+
+    yPos += 35;
+
+    // Signature
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
     doc.text("Received By:", margin, yPos);
     yPos += 12;
 
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
     yPos += 5;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.text("Authorized Signature", margin, yPos);
     yPos += 5;
     doc.text("Pintorex Construction Limited", margin, yPos);
@@ -2090,35 +2687,29 @@ function generateReceipt(data) {
     doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
 }
 
-// 9. LPO - REFINED
-function generateLPO(data, lpoDetails) {
+// 9. LPO (Purchase Order)
+async function generateLPO(data, lpoDetails) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('lpo');
-    const colors = {
-        primary: [31, 41, 55],
-        accent: [245, 158, 11],
-        text: [17, 24, 39],
-        subtle: [249, 250, 251]
-    };
 
-    addDocumentHeader(doc);
-    addDocumentFooter(doc);
+    addProfessionalHeader(doc, 'PURCHASE ORDER');
+    addProfessionalFooter(doc);
 
-    let yPos = 35;
+    let yPos = 48;
 
     // Title
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("PURCHASE ORDER", pageWidth / 2, yPos, { align: "center" });
+    doc.text("LOCAL PURCHASE ORDER", pageWidth / 2, yPos, { align: "center" });
 
-    doc.setDrawColor(...colors.accent);
+    doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
-    doc.line(pageWidth / 2 - 42, yPos + 3, pageWidth / 2 + 42, yPos + 3);
+    doc.line(pageWidth / 2 - 50, yPos + 3, pageWidth / 2 + 50, yPos + 3);
 
     yPos += 10;
 
@@ -2129,12 +2720,12 @@ function generateLPO(data, lpoDetails) {
     yPos += 15;
 
     // LPO details
-    doc.setFillColor(...colors.subtle);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 30, 'F');
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 30, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text("SUPPLIER:", margin + 5, yPos + 8);
     doc.setFont("helvetica", "normal");
     doc.text(lpoDetails.supplierName, margin + 5, yPos + 14);
@@ -2160,14 +2751,9 @@ function generateLPO(data, lpoDetails) {
     const materials = JSON.parse(data.materials);
     const materialsTotal = materials.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0);
 
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 60, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.autoTable({
         startY: yPos,
-        head: [["No.", "Description", "Unit", "Qty", "Unit Price", "Total"]],
+        head: [["#", "Description", "Unit", "Qty", "Unit Price", "Total"]],
         body: materials.map((m, i) => [
             i + 1,
             m.name,
@@ -2178,22 +2764,22 @@ function generateLPO(data, lpoDetails) {
         ]),
         styles: {
             fontSize: 9,
-            textColor: [17, 24, 39],
-            cellPadding: 3
+            textColor: Colors.text,
+            cellPadding: 4
         },
         headStyles: {
-            fillColor: [31, 41, 55],
-            textColor: [255, 255, 255],
+            fillColor: Colors.secondary,
+            textColor: Colors.white,
             fontSize: 9,
             fontStyle: 'bold'
         },
         columnStyles: {
-            0: { cellWidth: 15, halign: 'center' },
+            0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
-            2: { cellWidth: 25, halign: 'center' },
-            3: { cellWidth: 25, halign: 'right' },
-            4: { cellWidth: 30, halign: 'right' },
-            5: { cellWidth: 30, halign: 'right' }
+            2: { cellWidth: 22, halign: 'center' },
+            3: { cellWidth: 22, halign: 'right' },
+            4: { cellWidth: 28, halign: 'right' },
+            5: { cellWidth: 28, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -2202,15 +2788,10 @@ function generateLPO(data, lpoDetails) {
     yPos = doc.lastAutoTable.finalY + 8;
 
     // Total
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 15, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
+    doc.setFillColor(...Colors.primary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
 
-    doc.setFillColor(...colors.accent);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 14, 'F');
-
-    doc.setTextColor(...colors.primary);
+    doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text("TOTAL:", margin + 5, yPos + 9.5);
@@ -2219,18 +2800,13 @@ function generateLPO(data, lpoDetails) {
     yPos += 22;
 
     // Authorization
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 25, () => {
-        addDocumentHeader(doc);
-        addDocumentFooter(doc);
-    });
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(...colors.text);
+    doc.setTextColor(...Colors.text);
     doc.text("Authorized By:", margin, yPos);
     yPos += 12;
 
-    doc.setDrawColor(107, 114, 128);
+    doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
     yPos += 5;

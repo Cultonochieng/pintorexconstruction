@@ -30,7 +30,28 @@
     <link href="styles.css" rel="stylesheet">
 
     <style>
-        /* Construction-style fonts */
+        /* ============================================
+           CSS VARIABLES - Centralized Colors
+           ============================================ */
+        :root {
+            --color-primary: #F97316;
+            --color-primary-hover: #EA580C;
+            --color-primary-light: #FED7AA;
+            --color-secondary: #1F2937;
+            --color-secondary-hover: #374151;
+            --color-text: #111827;
+            --color-text-muted: #6B7280;
+            --color-subtle: #F9FAFB;
+            --color-success: #10B981;
+            --color-success-hover: #059669;
+            --color-error: #EF4444;
+            --color-warning: #F59E0B;
+            --color-border: #D1D5DB;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
         .font-construction {
             font-family: 'Oswald', sans-serif;
         }
@@ -41,56 +62,19 @@
             font-family: 'Oswald', sans-serif;
         }
 
-        /* Focus styles for accessibility */
+        /* ============================================
+           FOCUS & ACCESSIBILITY
+           ============================================ */
         a:focus, button:focus, input:focus, select:focus, textarea:focus {
-            outline: 2px solid #F97316;
+            outline: 2px solid var(--color-primary);
             outline-offset: 2px;
         }
 
-        /* Toast notification styles */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 500;
-            z-index: 9999;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s ease;
-        }
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-        .toast.success { background: #10B981; }
-        .toast.error { background: #EF4444; }
-        .toast.info { background: #F97316; }
-
-        /* Loading spinner */
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #F97316;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Skip link */
         .skip-link {
             position: absolute;
             top: -40px;
             left: 0;
-            background: #F97316;
+            background: var(--color-primary);
             color: white;
             padding: 8px 16px;
             z-index: 100;
@@ -100,11 +84,526 @@
             top: 0;
         }
 
-        /* Construction accent colors */
-        .text-construction-orange { color: #F97316; }
-        .bg-construction-orange { background-color: #F97316; }
-        .hover-construction-orange:hover { background-color: #EA580C; }
-        .focus-construction-orange:focus { ring-color: #F97316; }
+        /* Screen reader only */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* ============================================
+           COLOR UTILITIES
+           ============================================ */
+        .text-construction-orange { color: var(--color-primary); }
+        .bg-construction-orange { background-color: var(--color-primary); }
+        .hover-construction-orange:hover { background-color: var(--color-primary-hover); }
+        .border-construction-orange { border-color: var(--color-primary); }
+
+        /* ============================================
+           TOAST NOTIFICATION
+           ============================================ */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 9999;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            max-width: 350px;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast.success { background: var(--color-success); }
+        .toast.error { background: var(--color-error); }
+        .toast.info { background: var(--color-primary); }
+
+        /* ============================================
+           LOADING SPINNER
+           ============================================ */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--color-primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .spinner-sm {
+            width: 16px;
+            height: 16px;
+            border-width: 2px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ============================================
+           REQUIRED FIELD INDICATOR
+           ============================================ */
+        .required-field::after {
+            content: " *";
+            color: var(--color-error);
+        }
+
+        /* ============================================
+           FORM INPUTS
+           ============================================ */
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--color-border);
+            background-color: white;
+            color: var(--color-text);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-input:focus {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-light);
+        }
+        .form-input.error {
+            border-color: var(--color-error);
+        }
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--color-secondary);
+            margin-bottom: 8px;
+        }
+        .form-error {
+            color: var(--color-error);
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+
+        /* ============================================
+           MATERIAL ROWS
+           ============================================ */
+        .material-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 12px;
+            align-items: start;
+            padding: 16px;
+            background: var(--color-subtle);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .material-row .material-input {
+            padding: 10px 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        .material-row .remove-btn {
+            background: var(--color-error);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .material-row .remove-btn:hover {
+            background: #DC2626;
+        }
+
+        @media (max-width: 768px) {
+            .material-row {
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+            .material-row .material-name {
+                grid-column: span 2;
+            }
+            .material-row .material-notes {
+                grid-column: span 2;
+            }
+            .material-row .remove-btn {
+                grid-column: span 2;
+                justify-content: center;
+            }
+        }
+
+        /* Empty state for materials */
+        .materials-empty {
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--color-subtle);
+            border-radius: 8px;
+            border: 2px dashed var(--color-border);
+        }
+        .materials-empty svg {
+            width: 48px;
+            height: 48px;
+            color: var(--color-text-muted);
+            margin: 0 auto 12px;
+        }
+        .materials-empty p {
+            color: var(--color-text-muted);
+            margin-bottom: 16px;
+        }
+
+        /* ============================================
+           BUTTONS
+           ============================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+            font-size: 0.875rem;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--color-primary-hover);
+        }
+        .btn-secondary {
+            background: var(--color-secondary);
+            color: white;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--color-secondary-hover);
+        }
+        .btn-success {
+            background: var(--color-success);
+            color: white;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: var(--color-success-hover);
+        }
+        .btn-outline {
+            background: white;
+            color: var(--color-secondary);
+            border: 1px solid var(--color-border);
+        }
+        .btn-outline:hover:not(:disabled) {
+            background: var(--color-subtle);
+        }
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 0.8125rem;
+        }
+        .btn-lg {
+            padding: 14px 28px;
+            font-size: 1rem;
+        }
+
+        /* Document buttons grid */
+        .doc-buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        @media (max-width: 768px) {
+            .doc-buttons-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .doc-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 12px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+            font-size: 0.8125rem;
+            text-align: center;
+        }
+        .doc-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+        .doc-btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+        .doc-btn-primary:hover:not(:disabled) {
+            background: var(--color-primary-hover);
+            transform: translateY(-2px);
+        }
+        .doc-btn-secondary {
+            background: var(--color-secondary);
+            color: white;
+        }
+        .doc-btn-secondary:hover:not(:disabled) {
+            background: var(--color-secondary-hover);
+            transform: translateY(-2px);
+        }
+
+        /* ============================================
+           PROGRESS OVERLAY
+           ============================================ */
+        .progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+        .progress-overlay .progress-content {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .progress-overlay .progress-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-secondary);
+            margin-bottom: 8px;
+        }
+        .progress-overlay .progress-text {
+            color: var(--color-text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 20px;
+        }
+        .progress-overlay .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #E5E7EB;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-overlay .progress-fill {
+            height: 100%;
+            background: var(--color-primary);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .progress-overlay .progress-count {
+            margin-top: 12px;
+            font-size: 0.875rem;
+            color: var(--color-text-muted);
+        }
+
+        /* ============================================
+           MODAL STYLES
+           ============================================ */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            margin-bottom: 24px;
+        }
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-secondary);
+            margin: 0;
+        }
+        .modal-subtitle {
+            font-size: 0.875rem;
+            color: var(--color-text-muted);
+            margin-top: 4px;
+        }
+        .modal-body {
+            margin-bottom: 24px;
+        }
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        /* ============================================
+           SETTINGS BUTTON
+           ============================================ */
+        .settings-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 12px 20px;
+            background: var(--color-secondary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .settings-btn:hover {
+            background: var(--color-secondary-hover);
+            transform: translateY(-2px);
+        }
+        .settings-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* ============================================
+           CLIENT HISTORY DROPDOWN
+           ============================================ */
+        .client-history-wrapper {
+            position: relative;
+        }
+        .client-history-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+        }
+        .client-history-dropdown.show {
+            display: block;
+        }
+        .client-history-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--color-subtle);
+            transition: background 0.2s;
+        }
+        .client-history-item:hover {
+            background: var(--color-subtle);
+        }
+        .client-history-item:last-child {
+            border-bottom: none;
+        }
+        .client-history-name {
+            font-weight: 500;
+            color: var(--color-text);
+        }
+        .client-history-project {
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+        }
+
+        /* ============================================
+           VALIDATION FEEDBACK
+           ============================================ */
+        .validation-message {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.875rem;
+        }
+        .validation-message.error {
+            background: #FEE2E2;
+            color: #991B1B;
+            border: 1px solid #FECACA;
+        }
+        .validation-message.warning {
+            background: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FDE68A;
+        }
+        .validation-message svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        /* ============================================
+           SESSION INDICATOR
+           ============================================ */
+        .session-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--color-text-muted);
+        }
+        .session-indicator .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+        }
+
+        /* ============================================
+           DUPLICATE WARNING
+           ============================================ */
+        .duplicate-warning {
+            background: #FEF3C7;
+            color: #92400E;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -115,8 +614,8 @@
     <header class="bg-white shadow-sm">
         <div class="container mx-auto px-4 py-3">
             <div class="flex items-center justify-between">
-                <a href="index.html" class="flex items-center space-x-3 hover:opacity-90 transition duration-300">
-                    <img src="images/logo_pint.png" alt="Pintorex Construction Logo" class="h-10 w-auto">
+                <a href="index.html" class="flex items-center space-x-3 hover:opacity-90 transition duration-300" aria-label="Go to Pintorex Construction homepage">
+                    <img src="images/logo_pint.png" alt="" class="h-10 w-auto" aria-hidden="true">
                     <span class="text-xl md:text-2xl font-bold font-construction text-gray-800 tracking-wide">PINTOREX</span>
                 </a>
                 <nav aria-label="Breadcrumb">
@@ -124,7 +623,7 @@
                         <li>
                             <a href="index.html" class="text-construction-orange hover:text-orange-600 transition">Home</a>
                         </li>
-                        <li class="text-gray-400">/</li>
+                        <li class="text-gray-400" aria-hidden="true">/</li>
                         <li class="text-gray-600 font-medium" aria-current="page">Quotation Generator</li>
                     </ol>
                 </nav>
@@ -132,178 +631,265 @@
         </div>
     </header>
 
-    <div id="main-content" class="container mx-auto px-4 py-8">
+    <main id="main-content" class="container mx-auto px-4 py-8">
         <h1 class="text-3xl md:text-4xl font-bold text-center mb-8 text-gray-800 font-construction tracking-wide">QUOTATION GENERATOR</h1>
 
         <!-- Login Section -->
-        <div id="loginSection" class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
+        <section id="loginSection" class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md" aria-labelledby="loginHeading">
             <div class="text-center mb-6">
                 <img src="images/logo_pint.png" alt="Pintorex Construction" class="h-16 w-auto mx-auto mb-4">
+                <h2 id="loginHeading" class="sr-only">Login</h2>
                 <p class="text-gray-600">Enter your credentials to access the quotation generator</p>
             </div>
-            <form id="loginForm" class="space-y-4">
-                <div class="mb-4">
-                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Password:</label>
+            <form id="loginForm" class="space-y-4" novalidate>
+                <div>
+                    <label for="password" class="form-label">Password</label>
                     <input type="password" id="password" name="password" required
-                           class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
-                           autocomplete="off">
-                    <p id="loginError" class="text-red-500 text-sm mt-2 hidden"></p>
+                           class="form-input"
+                           autocomplete="current-password"
+                           aria-describedby="loginError">
+                    <p id="loginError" class="form-error hidden" role="alert" aria-live="polite"></p>
                 </div>
-                <button type="submit" id="loginBtn" class="w-full bg-construction-orange hover-construction-orange text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                <button type="submit" id="loginBtn" class="btn btn-primary w-full btn-lg">
                     <span id="loginText">Login</span>
-                    <span id="loginSpinner" class="hidden"><span class="spinner"></span>Verifying...</span>
+                    <span id="loginSpinner" class="hidden">
+                        <span class="spinner spinner-sm"></span>
+                        Verifying...
+                    </span>
                 </button>
             </form>
-        </div>
+        </section>
 
         <!-- Quotation Section (Hidden until login) -->
-        <div id="quotationSection" class="hidden max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md">
-            <form id="quotationForm" class="space-y-6">
-                <!-- Client Info -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="clientName" class="block text-sm font-medium text-gray-700 mb-2">Client Name:</label>
-                        <input type="text" id="clientName" name="clientName" required maxlength="100"
-                               class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                    </div>
-                    <div>
-                        <label for="projectType" class="block text-sm font-medium text-gray-700 mb-2">Project Type:</label>
-                        <select id="projectType" name="projectType" required
-                                class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                            <option value="New Construction - Residential">New Construction - Residential</option>
-                            <option value="New Construction - Commercial">New Construction - Commercial</option>
-                            <option value="Renovation - Residential">Renovation - Residential</option>
-                            <option value="Renovation - Commercial">Renovation - Commercial</option>
-                            <option value="Interior Fit-Out">Interior Fit-Out</option>
-                            <option value="Exterior Remodeling">Exterior Remodeling</option>
-                            <option value="Home Addition">Home Addition</option>
-                            <option value="Infrastructure Construction">Infrastructure Construction</option>
-                            <option value="Industrial Construction">Industrial Construction</option>
-                            <option value="Landscaping">Landscaping</option>
-                            <option value="Demolition">Demolition</option>
-                            <option value="Material Supply Only">Material Supply Only</option>
-                            <option value="Equipment Rental">Equipment Rental</option>
-                            <option value="Concrete Work">Concrete Work</option>
-                            <option value="Roofing">Roofing</option>
-                            <option value="Electrical Installation">Electrical Installation</option>
-                            <option value="Plumbing Installation">Plumbing Installation</option>
-                            <option value="HVAC Installation">HVAC Installation</option>
-                            <option value="Painting">Painting</option>
-                            <option value="Flooring Installation">Flooring Installation</option>
-                            <option value="Custom Carpentry">Custom Carpentry</option>
-                            <option value="Site Preparation">Site Preparation</option>
-                            <option value="Other">Other (Please specify in description)</option>
-                        </select>
-                    </div>
+        <section id="quotationSection" class="hidden max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md" aria-labelledby="quotationHeading">
+            <div class="flex items-center justify-between mb-6">
+                <h2 id="quotationHeading" class="sr-only">Create Quotation</h2>
+                <div class="session-indicator" id="sessionIndicator">
+                    <span class="dot"></span>
+                    <span>Session active</span>
                 </div>
+            </div>
+
+            <!-- Validation Messages Container -->
+            <div id="validationMessages" aria-live="polite"></div>
+
+            <form id="quotationForm" class="space-y-6" novalidate>
+                <!-- Client Info -->
+                <fieldset>
+                    <legend class="text-lg font-bold text-gray-800 font-construction mb-4">CLIENT INFORMATION</legend>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="client-history-wrapper">
+                            <label for="clientName" class="form-label required-field">Client Name</label>
+                            <input type="text" id="clientName" name="clientName" required maxlength="100"
+                                   class="form-input"
+                                   placeholder="Enter client name"
+                                   autocomplete="off"
+                                   aria-describedby="clientNameHelp">
+                            <div id="clientHistoryDropdown" class="client-history-dropdown" role="listbox" aria-label="Previous clients"></div>
+                            <p id="clientNameHelp" class="text-xs text-gray-500 mt-1">Start typing to see previous clients</p>
+                        </div>
+                        <div>
+                            <label for="projectType" class="form-label required-field">Project Type</label>
+                            <select id="projectType" name="projectType" required class="form-input">
+                                <option value="">Select project type</option>
+                                <option value="New Construction - Residential">New Construction - Residential</option>
+                                <option value="New Construction - Commercial">New Construction - Commercial</option>
+                                <option value="Renovation - Residential">Renovation - Residential</option>
+                                <option value="Renovation - Commercial">Renovation - Commercial</option>
+                                <option value="Interior Fit-Out">Interior Fit-Out</option>
+                                <option value="Exterior Remodeling">Exterior Remodeling</option>
+                                <option value="Home Addition">Home Addition</option>
+                                <option value="Infrastructure Construction">Infrastructure Construction</option>
+                                <option value="Industrial Construction">Industrial Construction</option>
+                                <option value="Landscaping">Landscaping</option>
+                                <option value="Demolition">Demolition</option>
+                                <option value="Material Supply Only">Material Supply Only</option>
+                                <option value="Equipment Rental">Equipment Rental</option>
+                                <option value="Concrete Work">Concrete Work</option>
+                                <option value="Roofing">Roofing</option>
+                                <option value="Electrical Installation">Electrical Installation</option>
+                                <option value="Plumbing Installation">Plumbing Installation</option>
+                                <option value="HVAC Installation">HVAC Installation</option>
+                                <option value="Painting">Painting</option>
+                                <option value="Flooring Installation">Flooring Installation</option>
+                                <option value="Custom Carpentry">Custom Carpentry</option>
+                                <option value="Site Preparation">Site Preparation</option>
+                                <option value="Other">Other (Please specify in description)</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
 
                 <!-- Project Description -->
                 <div>
-                    <label for="projectDescription" class="block text-sm font-medium text-gray-700 mb-2">Project Description:</label>
+                    <label for="projectDescription" class="form-label">Project Description</label>
                     <textarea id="projectDescription" name="projectDescription" rows="3" maxlength="1000"
-                              class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition"></textarea>
+                              class="form-input"
+                              placeholder="Describe the project scope, location, special requirements, etc."></textarea>
+                    <p class="text-xs text-gray-500 mt-1"><span id="descCharCount">0</span>/1000 characters</p>
                 </div>
 
                 <!-- Materials Section -->
-                <div class="space-y-4">
-                    <h3 class="font-bold text-lg text-gray-800 font-construction">MATERIALS:</h3>
-                    <div id="materialsContainer" class="space-y-2"></div>
-                    <button type="button" id="addMaterialBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
-                        + Add Material
+                <fieldset class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <legend class="text-lg font-bold text-gray-800 font-construction">MATERIALS</legend>
+                        <span class="text-sm text-gray-500" id="materialsCount">0 items</span>
+                    </div>
+
+                    <div id="materialsContainer">
+                        <!-- Empty state -->
+                        <div id="materialsEmpty" class="materials-empty">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                            <p>No materials added yet</p>
+                            <button type="button" id="addFirstMaterial" class="btn btn-primary btn-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Add First Material
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="button" id="addMaterialBtn" class="btn btn-success hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Material
                     </button>
-                </div>
+                </fieldset>
 
                 <!-- Labor & Costs -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label for="laborType" class="block text-sm font-medium text-gray-700 mb-2">Labor Cost Type:</label>
-                        <select id="laborType" name="laborType"
-                                class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                            <option value="custom">Custom Amount</option>
-                            <option value="30">30% of Materials</option>
-                            <option value="28">28% of Materials</option>
-                            <option value="25">25% of Materials</option>
-                            <option value="20">20% of Materials</option>
-                            <option value="15">15% of Materials</option>
-                        </select>
+                <fieldset>
+                    <legend class="text-lg font-bold text-gray-800 font-construction mb-4">COSTS & CHARGES</legend>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="laborType" class="form-label">Labor Cost Type</label>
+                            <select id="laborType" name="laborType" class="form-input">
+                                <option value="custom">Custom Amount</option>
+                                <option value="30">30% of Materials</option>
+                                <option value="28">28% of Materials</option>
+                                <option value="25">25% of Materials</option>
+                                <option value="20">20% of Materials</option>
+                                <option value="15">15% of Materials</option>
+                            </select>
+                        </div>
+                        <div id="customLaborDiv">
+                            <label for="laborCost" class="form-label">Labor Cost (KES)</label>
+                            <input type="number" id="laborCost" name="laborCost" min="0" step="0.01"
+                                   class="form-input"
+                                   placeholder="Enter labor cost">
+                        </div>
+                        <div>
+                            <label for="vatPercentage" class="form-label">VAT Percentage</label>
+                            <select id="vatPercentage" name="vatPercentage" required class="form-input">
+                                <option value="0">No VAT (0%)</option>
+                                <option value="16">16% (Standard Rate)</option>
+                                <option value="8">8% (Reduced Rate)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="contingencyPercentage" class="form-label">Contingency Percentage</label>
+                            <select id="contingencyPercentage" name="contingencyPercentage" required class="form-input">
+                                <option value="0">No Contingency (0%)</option>
+                                <option value="5">5%</option>
+                                <option value="10">10%</option>
+                                <option value="15">15%</option>
+                                <option value="20">20%</option>
+                            </select>
+                        </div>
                     </div>
-                    <div id="customLaborDiv">
-                        <label for="laborCost" class="block text-sm font-medium text-gray-700 mb-2">Labor Cost (KES):</label>
-                        <input type="number" id="laborCost" name="laborCost" min="0" step="0.01"
-                               class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                    </div>
-                    <div>
-                        <label for="vatPercentage" class="block text-sm font-medium text-gray-700 mb-2">VAT Percentage:</label>
-                        <select id="vatPercentage" name="vatPercentage" required
-                                class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                            <option value="0">No VAT (0%)</option>
-                            <option value="16">16% (Standard Rate)</option>
-                            <option value="8">8% (Reduced Rate)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="contingencyPercentage" class="block text-sm font-medium text-gray-700 mb-2">Contingency Percentage:</label>
-                        <select id="contingencyPercentage" name="contingencyPercentage" required
-                                class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-orange-500 transition">
-                            <option value="0">No Contingency (0%)</option>
-                            <option value="5">5%</option>
-                            <option value="10">10%</option>
-                            <option value="15">15%</option>
-                            <option value="20">20%</option>
-                        </select>
-                    </div>
-                </div>
+                </fieldset>
 
                 <!-- Main Submit Button -->
-                <div class="flex justify-center">
-                    <button type="submit" class="bg-construction-orange hover-construction-orange text-white font-bold py-3 px-8 rounded-lg transition duration-300 text-lg shadow-lg">
-                        Generate Quotation PDF
+                <div class="flex justify-center pt-4">
+                    <button type="submit" id="generateQuotationBtn" class="btn btn-primary btn-lg shadow-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span class="btn-text">Generate Quotation PDF</span>
+                        <span class="btn-loading hidden">
+                            <span class="spinner spinner-sm"></span>
+                            Generating...
+                        </span>
                     </button>
                 </div>
 
                 <!-- Additional Documents Section -->
                 <div class="mt-8 border-t pt-8">
                     <h3 class="text-lg font-bold text-gray-800 mb-4 font-construction">ADDITIONAL DOCUMENTS</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <button type="button" id="generateAcceptance" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                    <div class="doc-buttons-grid">
+                        <button type="button" id="generateAcceptance" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                             Acceptance Letter
                         </button>
-                        <button type="button" id="generatePayment" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generatePayment" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
                             Payment Request
                         </button>
-                        <button type="button" id="generateInvoice" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generateInvoice" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+                            </svg>
                             Invoice
                         </button>
-                        <button type="button" id="generateDelivery" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generateDelivery" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
                             Delivery Note
                         </button>
-                        <button type="button" id="generateContract" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generateContract" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
                             Contract Agreement
                         </button>
-                        <button type="button" id="generateRecommendation" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generateRecommendation" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                            </svg>
                             Recommendation
                         </button>
-                        <button type="button" id="generateReceipt" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
+                        <button type="button" id="generateReceipt" class="doc-btn doc-btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            </svg>
                             Receipt
                         </button>
-                        <button type="button" id="generateLPO" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 text-sm">
-                            LPO
+                        <button type="button" id="generateLPO" class="doc-btn doc-btn-secondary">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            Purchase Order
                         </button>
                     </div>
-                    <div class="mt-4 text-center">
-                        <button type="button" id="generateAll" class="bg-construction-orange hover-construction-orange text-white font-bold py-3 px-6 rounded-lg transition duration-300 shadow-lg">
-                            Generate All Documents
+                    <div class="mt-6 text-center">
+                        <button type="button" id="generateAll" class="btn btn-primary btn-lg shadow-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            <span class="btn-text">Generate All Documents</span>
+                            <span class="btn-loading hidden">
+                                <span class="spinner spinner-sm"></span>
+                                Generating...
+                            </span>
                         </button>
                     </div>
                 </div>
             </form>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <!-- Footer -->
     <footer class="bg-gray-800 text-white py-4 mt-8">
         <div class="container mx-auto px-4 text-center">
-            <p class="text-gray-400 text-sm">&copy; <span id="currentYear"></span> Pintorex Construction Limited. Internal Use Only.</p>
+            <p class="text-gray-400 text-sm">&copy; <span id="currentYear"></span> Pintorex Construction Limited. All rights reserved.</p>
         </div>
     </footer>
 
@@ -313,7 +899,7 @@
     </script>
 
     <!-- Toast notification -->
-    <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
