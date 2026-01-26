@@ -357,7 +357,12 @@ const ProgressOverlay = {
 // ============================================================================
 
 const ModalUI = {
-    createModal(title, subtitle, content, buttons) {
+    createModal(title, subtitle, content, buttonConfigs) {
+        // buttonConfigs is an array of {label, type, action} objects
+        const buttonsHTML = buttonConfigs.map((btn, index) =>
+            `<button type="button" class="btn ${btn.type}" data-modal-action="${btn.action}" id="modalBtn${index}">${btn.label}</button>`
+        ).join('');
+
         const modalHTML = `
             <div id="pintorexModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
                 <div class="modal-content">
@@ -366,15 +371,26 @@ const ModalUI = {
                         ${subtitle ? `<p class="modal-subtitle">${subtitle}</p>` : ''}
                     </div>
                     <div class="modal-body" id="modalContent">${content}</div>
-                    <div class="modal-footer" id="modalButtons">${buttons}</div>
+                    <div class="modal-footer" id="modalButtons">${buttonsHTML}</div>
                 </div>
             </div>
         `;
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
 
-        // Focus trap
         const modal = document.getElementById('pintorexModal');
+
+        // Attach event listeners to buttons
+        buttonConfigs.forEach((btn, index) => {
+            const button = document.getElementById(`modalBtn${index}`);
+            if (button) {
+                button.addEventListener('click', () => {
+                    modal.dispatchEvent(new CustomEvent(btn.action));
+                });
+            }
+        });
+
+        // Focus trap
         const focusableElements = modal.querySelectorAll('input, button, select, textarea');
         if (focusableElements.length > 0) {
             focusableElements[0].focus();
@@ -407,10 +423,10 @@ const ModalUI = {
                 </div>
             `;
 
-            const buttons = `
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
-            `;
+            const buttons = [
+                { label: 'Cancel', type: 'btn-outline', action: 'cancel' },
+                { label: 'Continue', type: 'btn-primary', action: 'submit' }
+            ];
 
             const modal = this.createModal('LPO Supplier Details', 'Enter the supplier information for this purchase order', content, buttons);
 
@@ -465,10 +481,10 @@ const ModalUI = {
                 </div>
             `;
 
-            const buttons = `
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
-            `;
+            const buttons = [
+                { label: 'Cancel', type: 'btn-outline', action: 'cancel' },
+                { label: 'Continue', type: 'btn-primary', action: 'submit' }
+            ];
 
             const modal = this.createModal('Bank Payment Details', 'Enter the bank details for payment', content, buttons);
 
@@ -523,10 +539,10 @@ const ModalUI = {
                 </div>
             `;
 
-            const buttons = `
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Continue</button>
-            `;
+            const buttons = [
+                { label: 'Cancel', type: 'btn-outline', action: 'cancel' },
+                { label: 'Continue', type: 'btn-primary', action: 'submit' }
+            ];
 
             const modal = this.createModal('Invoice Details', 'Enter the invoice reference information', content, buttons);
 
@@ -580,10 +596,10 @@ const ModalUI = {
                 </div>
             `;
 
-            const buttons = `
-                <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('cancel'))">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('submit'))">Generate Receipt</button>
-            `;
+            const buttons = [
+                { label: 'Cancel', type: 'btn-outline', action: 'cancel' },
+                { label: 'Generate Receipt', type: 'btn-primary', action: 'submit' }
+            ];
 
             const modal = this.createModal('Receipt Details', 'Enter the payment information for this receipt', content, buttons);
 
@@ -650,10 +666,10 @@ const ModalUI = {
             </div>
         `;
 
-        const buttons = `
-            <button type="button" class="btn btn-outline" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('close'))">Close</button>
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('pintorexModal').dispatchEvent(new CustomEvent('save'))">Save Settings</button>
-        `;
+        const buttons = [
+            { label: 'Close', type: 'btn-outline', action: 'close' },
+            { label: 'Save Settings', type: 'btn-primary', action: 'save' }
+        ];
 
         const modal = this.createModal('Settings & Document Registry', 'Manage your preferences and view recent documents', content, buttons);
 
@@ -763,7 +779,7 @@ function createMaterialRow() {
             <input type="number" id="materialPrice-${rowId}" name="materialUnitPrice[]" placeholder="Unit Price"
                    class="material-input w-full" required min="0" step="0.01" aria-label="Unit price in KES">
         </div>
-        <button type="button" class="remove-btn" onclick="removeMaterialRow(${rowId})" aria-label="Remove this material">
+        <button type="button" class="remove-btn" data-row-id="${rowId}" aria-label="Remove this material">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -774,6 +790,10 @@ function createMaterialRow() {
     // Add duplicate detection
     const nameInput = row.querySelector(`#materialName-${rowId}`);
     nameInput.addEventListener('input', () => checkDuplicateMaterial(rowId));
+
+    // Add remove button event listener
+    const removeBtn = row.querySelector('.remove-btn');
+    removeBtn.addEventListener('click', () => removeMaterialRow(rowId));
 
     return row;
 }

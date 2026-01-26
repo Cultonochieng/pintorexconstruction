@@ -29,6 +29,7 @@ app.use(helmet({
                 "https://cdnjs.cloudflare.com",
                 "https://unpkg.com"
             ],
+            scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: [
                 "'self'",
                 "'unsafe-inline'",
