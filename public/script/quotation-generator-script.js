@@ -26,6 +26,7 @@ const Colors = {
 // ============================================================================
 
 let logoDataUrl = null;
+let logoAspectRatio = 1;
 
 async function loadLogoForPDF() {
     return new Promise((resolve) => {
@@ -38,6 +39,7 @@ async function loadLogoForPDF() {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
             logoDataUrl = canvas.toDataURL('image/png');
+            logoAspectRatio = img.width / img.height;
             resolve(logoDataUrl);
         };
         img.onerror = function() {
@@ -716,7 +718,21 @@ function calculateTotals(data) {
     const vat = subtotal * (vatPercentage / 100);
     const contingencyPercentage = parseFloat(data.contingencyPercentage) || 0;
     const contingency = subtotal * (contingencyPercentage / 100);
-    const total = subtotal + vat + contingency;
+    const grossTotal = subtotal + vat + contingency;
+
+    // Tax deductions (calculated on gross total)
+    const withholdingTaxPercentage = parseFloat(data.withholdingTax) || 0;
+    const withholdingTax = grossTotal * (withholdingTaxPercentage / 100);
+    const subcontractorWHTPercentage = parseFloat(data.subcontractorWHT) || 0;
+    const subcontractorWHT = grossTotal * (subcontractorWHTPercentage / 100);
+    const retentionPercentage = parseFloat(data.retentionPercentage) || 0;
+    const retention = grossTotal * (retentionPercentage / 100);
+
+    // Total deductions
+    const totalDeductions = withholdingTax + subcontractorWHT + retention;
+
+    // Net payable (gross minus deductions)
+    const netPayable = grossTotal - totalDeductions;
 
     return {
         materialsTotal,
@@ -724,9 +740,18 @@ function calculateTotals(data) {
         subtotal,
         vat,
         contingency,
-        total,
+        total: grossTotal, // Keep 'total' for backward compatibility
+        grossTotal,
         vatPercentage,
-        contingencyPercentage
+        contingencyPercentage,
+        withholdingTax,
+        withholdingTaxPercentage,
+        subcontractorWHT,
+        subcontractorWHTPercentage,
+        retention,
+        retentionPercentage,
+        totalDeductions,
+        netPayable
     };
 }
 
@@ -748,26 +773,73 @@ function createMaterialRow() {
                    class="material-input w-full" required aria-label="Material name">
             <div class="duplicate-warning hidden" id="duplicateWarning-${rowId}">Possible duplicate material</div>
         </div>
-        <div>
+        <div class="unit-wrapper">
             <label for="materialUnit-${rowId}" class="sr-only">Unit</label>
             <select id="materialUnit-${rowId}" name="materialUnit[]" class="material-input w-full" aria-label="Unit of measurement">
-                <option value="kgs">Kilograms (kgs)</option>
-                <option value="m">Meters (m)</option>
-                <option value="sqm">Square Meters (sq.m)</option>
-                <option value="pcs">Pieces (pcs)</option>
-                <option value="bags">Bags</option>
-                <option value="ltrs">Liters (ltrs)</option>
-                <option value="inch">Inches (in)</option>
-                <option value="ft">Feet (ft)</option>
-                <option value="rolls">Rolls</option>
-                <option value="cu.m">Cubic Meters (cu.m)</option>
-                <option value="tonnes">Tonnes</option>
-                <option value="sheets">Sheets</option>
-                <option value="boxes">Boxes</option>
-                <option value="units">Units</option>
-                <option value="yards">Yards</option>
-                <option value="gallons">Gallons</option>
+                <optgroup label="Common Units">
+                    <option value="pcs">Pieces (pcs)</option>
+                    <option value="units">Units</option>
+                    <option value="sets">Sets</option>
+                    <option value="pairs">Pairs</option>
+                </optgroup>
+                <optgroup label="Length">
+                    <option value="m">Meters (m)</option>
+                    <option value="cm">Centimeters (cm)</option>
+                    <option value="mm">Millimeters (mm)</option>
+                    <option value="ft">Feet (ft)</option>
+                    <option value="inch">Inches (in)</option>
+                    <option value="yards">Yards</option>
+                    <option value="km">Kilometers (km)</option>
+                </optgroup>
+                <optgroup label="Area">
+                    <option value="sqm">Square Meters (sq.m)</option>
+                    <option value="sqft">Square Feet (sq.ft)</option>
+                    <option value="acres">Acres</option>
+                    <option value="hectares">Hectares</option>
+                </optgroup>
+                <optgroup label="Volume">
+                    <option value="cu.m">Cubic Meters (cu.m)</option>
+                    <option value="cu.ft">Cubic Feet (cu.ft)</option>
+                    <option value="ltrs">Liters (ltrs)</option>
+                    <option value="gallons">Gallons</option>
+                    <option value="barrels">Barrels</option>
+                </optgroup>
+                <optgroup label="Weight/Mass">
+                    <option value="kgs">Kilograms (kgs)</option>
+                    <option value="grams">Grams (g)</option>
+                    <option value="tonnes">Tonnes</option>
+                    <option value="lbs">Pounds (lbs)</option>
+                </optgroup>
+                <optgroup label="Construction Specific">
+                    <option value="bags">Bags</option>
+                    <option value="rolls">Rolls</option>
+                    <option value="sheets">Sheets</option>
+                    <option value="boxes">Boxes</option>
+                    <option value="bundles">Bundles</option>
+                    <option value="pallets">Pallets</option>
+                    <option value="loads">Loads</option>
+                    <option value="trips">Trips</option>
+                    <option value="rods">Rods</option>
+                    <option value="bars">Bars</option>
+                    <option value="lengths">Lengths</option>
+                    <option value="coils">Coils</option>
+                    <option value="drums">Drums</option>
+                    <option value="tins">Tins</option>
+                    <option value="buckets">Buckets</option>
+                </optgroup>
+                <optgroup label="Labour/Services">
+                    <option value="LS">Lump Sum (LS)</option>
+                    <option value="days">Days</option>
+                    <option value="hours">Hours</option>
+                    <option value="man-days">Man-Days</option>
+                    <option value="man-hours">Man-Hours</option>
+                </optgroup>
+                <optgroup label="Other">
+                    <option value="Other">Other (Specify)</option>
+                </optgroup>
             </select>
+            <input type="text" id="customUnit-${rowId}" name="customUnit[]" placeholder="Enter unit"
+                   class="material-input w-full hidden custom-unit-input" aria-label="Custom unit">
         </div>
         <div>
             <label for="materialQty-${rowId}" class="sr-only">Quantity</label>
@@ -794,6 +866,20 @@ function createMaterialRow() {
     // Add remove button event listener
     const removeBtn = row.querySelector('.remove-btn');
     removeBtn.addEventListener('click', () => removeMaterialRow(rowId));
+
+    // Add unit change handler for "Other" option
+    const unitSelect = row.querySelector(`#materialUnit-${rowId}`);
+    const customUnitInput = row.querySelector(`#customUnit-${rowId}`);
+    unitSelect.addEventListener('change', function() {
+        if (this.value === 'Other') {
+            customUnitInput.classList.remove('hidden');
+            customUnitInput.required = true;
+        } else {
+            customUnitInput.classList.add('hidden');
+            customUnitInput.required = false;
+            customUnitInput.value = '';
+        }
+    });
 
     return row;
 }
@@ -882,11 +968,16 @@ function gatherMaterialsData() {
     rows.forEach(row => {
         const nameInput = row.querySelector('[name="materialName[]"]');
         const unitInput = row.querySelector('[name="materialUnit[]"]');
+        const customUnitInput = row.querySelector('[name="customUnit[]"]');
         const qtyInput = row.querySelector('[name="materialQuantity[]"]');
         const priceInput = row.querySelector('[name="materialUnitPrice[]"]');
 
         const name = nameInput ? nameInput.value : '';
-        const unit = unitInput ? unitInput.value : '';
+        let unit = unitInput ? unitInput.value : '';
+        // Use custom unit if "Other" is selected
+        if (unit === 'Other' && customUnitInput && customUnitInput.value) {
+            unit = customUnitInput.value;
+        }
         const quantity = qtyInput ? parseFloat(qtyInput.value) : 0;
         const unitPrice = priceInput ? parseFloat(priceInput.value) : 0;
 
@@ -923,13 +1014,21 @@ function restoreFormData() {
     if (!savedData) return;
 
     // Restore basic fields
-    const fields = ['clientName', 'projectType', 'projectDescription', 'laborType', 'laborCost', 'vatPercentage', 'contingencyPercentage'];
+    const fields = ['clientName', 'projectType', 'projectDescription', 'laborType', 'laborCost', 'vatPercentage', 'contingencyPercentage', 'customProjectType', 'withholdingTax', 'subcontractorWHT', 'retentionPercentage'];
     fields.forEach(field => {
         const input = document.getElementById(field);
         if (input && savedData[field]) {
             input.value = savedData[field];
         }
     });
+
+    // Show custom project type div if "Other" was selected
+    if (savedData.projectType === 'Other') {
+        const customProjectTypeDiv = document.getElementById('customProjectTypeDiv');
+        const customProjectTypeInput = document.getElementById('customProjectType');
+        if (customProjectTypeDiv) customProjectTypeDiv.classList.remove('hidden');
+        if (customProjectTypeInput) customProjectTypeInput.required = true;
+    }
 
     // Restore materials
     if (savedData.materials) {
@@ -1053,29 +1152,34 @@ function addProfessionalHeader(doc, documentType = '') {
     doc.setFillColor(...Colors.primary);
     doc.rect(0, 32, pageWidth, 2, 'F');
 
-    // Add logo if available
+    // Add logo if available - maintain aspect ratio
+    let logoWidth = 0;
     if (logoDataUrl) {
         try {
-            doc.addImage(logoDataUrl, 'PNG', margin, 4, 24, 24);
+            const logoHeight = 22; // Fixed height to fit in header
+            logoWidth = logoHeight * logoAspectRatio; // Calculate width based on aspect ratio
+            doc.addImage(logoDataUrl, 'PNG', margin, 5, logoWidth, logoHeight);
         } catch (e) {
             console.warn('Could not add logo to PDF');
+            logoWidth = 0;
         }
     }
 
-    // Company name
+    // Company name - positioned after logo
+    const textStartX = margin + (logoWidth > 0 ? logoWidth + 5 : 0);
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("PINTOREX", margin + (logoDataUrl ? 30 : 0), 16);
+    doc.text("PINTOREX", textStartX, 14);
 
     // Tagline
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text("CONSTRUCTION LIMITED", margin + (logoDataUrl ? 30 : 0), 22);
+    doc.text("CONSTRUCTION LIMITED", textStartX, 20);
     doc.setFontSize(7);
-    doc.text("Building Excellence, Crafting Dreams", margin + (logoDataUrl ? 30 : 0), 27);
+    doc.text("Building Excellence, Crafting Dreams", textStartX, 26);
 
-    // Contact info on right
+    // Contact info on right - aligned to far right
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     const contactInfo = [
@@ -1083,21 +1187,21 @@ function addProfessionalHeader(doc, documentType = '') {
         "Email: pintorexkenya@gmail.com",
         "Migori Town, Kenya"
     ];
-    let contactY = 12;
+    let contactY = 10;
     contactInfo.forEach(info => {
         doc.text(info, pageWidth - margin, contactY, { align: "right" });
         contactY += 5;
     });
 
-    // Document type badge
+    // Document type badge - positioned at bottom right of header
     if (documentType) {
         doc.setFillColor(...Colors.primary);
-        const badgeWidth = doc.getTextWidth(documentType) + 16;
-        doc.roundedRect(pageWidth - margin - badgeWidth, 25, badgeWidth, 8, 2, 2, 'F');
-        doc.setTextColor(...Colors.white);
-        doc.setFontSize(7);
         doc.setFont("helvetica", "bold");
-        doc.text(documentType, pageWidth - margin - badgeWidth/2, 30, { align: "center" });
+        doc.setFontSize(7);
+        const badgeWidth = doc.getTextWidth(documentType) + 16;
+        doc.roundedRect(pageWidth - margin - badgeWidth, 24, badgeWidth, 8, 2, 2, 'F');
+        doc.setTextColor(...Colors.white);
+        doc.text(documentType, pageWidth - margin - badgeWidth/2, 29, { align: "center" });
     }
 }
 
@@ -1127,6 +1231,46 @@ function addProfessionalFooter(doc, pageNumber = null) {
     if (pageNumber !== null) {
         doc.setFontSize(8);
         doc.text(`Page ${pageNumber}`, pageWidth - margin, footerY + 9, { align: "right" });
+    }
+}
+
+function addWatermark(doc) {
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    // Set watermark properties - very light gray
+    doc.setTextColor(230, 230, 230);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(50);
+
+    // Create diagonal watermark text
+    const watermarkText = "PINTOREX";
+
+    // Draw watermark in center of page at an angle
+    const centerX = pageWidth / 2;
+    const centerY = pageHeight / 2;
+
+    // Add rotated watermark
+    doc.text(watermarkText, centerX, centerY, {
+        align: "center",
+        angle: 45,
+        renderingMode: 'fill'
+    });
+
+    // Add smaller authenticity text below
+    doc.setFontSize(12);
+    doc.setTextColor(220, 220, 220);
+    doc.text("ORIGINAL DOCUMENT", centerX, centerY + 20, {
+        align: "center",
+        angle: 45
+    });
+}
+
+function addWatermarkToAllPages(doc) {
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        addWatermark(doc);
     }
 }
 
@@ -1355,6 +1499,11 @@ document.addEventListener('DOMContentLoaded', async function() {
             const quotationData = Object.fromEntries(formData.entries());
             quotationData.materials = JSON.stringify(gatherMaterialsData());
 
+            // Handle custom project type
+            if (quotationData.projectType === 'Other' && quotationData.customProjectType) {
+                quotationData.projectType = quotationData.customProjectType;
+            }
+
             if (!validateFormData(quotationData)) return;
 
             // Save client to history
@@ -1379,6 +1528,23 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (laborTypeSelect) {
         laborTypeSelect.addEventListener('change', handleLaborTypeChange);
         handleLaborTypeChange(); // Initial state
+    }
+
+    // Project type change handler for "Other" option
+    const projectTypeSelect = document.getElementById('projectType');
+    const customProjectTypeDiv = document.getElementById('customProjectTypeDiv');
+    const customProjectTypeInput = document.getElementById('customProjectType');
+    if (projectTypeSelect && customProjectTypeDiv) {
+        projectTypeSelect.addEventListener('change', function() {
+            if (this.value === 'Other') {
+                customProjectTypeDiv.classList.remove('hidden');
+                customProjectTypeInput.required = true;
+            } else {
+                customProjectTypeDiv.classList.add('hidden');
+                customProjectTypeInput.required = false;
+                customProjectTypeInput.value = '';
+            }
+        });
     }
 
     // Character count for description
@@ -1406,6 +1572,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         const formData = new FormData(document.getElementById('quotationForm'));
         const data = Object.fromEntries(formData.entries());
         data.materials = JSON.stringify(gatherMaterialsData());
+        // Handle custom project type
+        if (data.projectType === 'Other' && data.customProjectType) {
+            data.projectType = data.customProjectType;
+        }
         return data;
     }
 
@@ -1747,14 +1917,7 @@ async function generateProfessionalQuotation(data) {
 
     yPos += 16;
 
-    // Summary content
-    doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 52, 3, 3, 'F');
-
-    let summaryY = yPos + 10;
-    doc.setTextColor(...Colors.text);
-    doc.setFontSize(10);
-
+    // Summary content - build dynamic items list
     const summaryItems = [
         ["Materials Total:", `KES ${numberWithCommas(totals.materialsTotal)}`],
         ["Labor Cost:", `KES ${numberWithCommas(totals.labor)}`],
@@ -1762,6 +1925,30 @@ async function generateProfessionalQuotation(data) {
         [`VAT (${totals.vatPercentage}%):`, `KES ${numberWithCommas(totals.vat)}`],
         [`Contingency (${totals.contingencyPercentage}%):`, `KES ${numberWithCommas(totals.contingency)}`]
     ];
+
+    // Add gross total
+    summaryItems.push(["Gross Total:", `KES ${numberWithCommas(totals.grossTotal)}`]);
+
+    // Add deductions if applicable
+    if (totals.withholdingTaxPercentage > 0) {
+        summaryItems.push([`Less: WHT (${totals.withholdingTaxPercentage}%):`, `(KES ${numberWithCommas(totals.withholdingTax)})`]);
+    }
+    if (totals.subcontractorWHTPercentage > 0) {
+        summaryItems.push([`Less: Subcontractor WHT (${totals.subcontractorWHTPercentage}%):`, `(KES ${numberWithCommas(totals.subcontractorWHT)})`]);
+    }
+    if (totals.retentionPercentage > 0) {
+        summaryItems.push([`Less: Retention (${totals.retentionPercentage}%):`, `(KES ${numberWithCommas(totals.retention)})`]);
+    }
+
+    // Calculate dynamic box height
+    const boxHeight = 10 + (summaryItems.length * 9) + 5;
+
+    doc.setFillColor(...Colors.subtle);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), boxHeight, 3, 3, 'F');
+
+    let summaryY = yPos + 10;
+    doc.setTextColor(...Colors.text);
+    doc.setFontSize(10);
 
     summaryItems.forEach(([label, value]) => {
         doc.setFont("helvetica", "normal");
@@ -1771,18 +1958,21 @@ async function generateProfessionalQuotation(data) {
         summaryY += 9;
     });
 
-    yPos += 55;
+    yPos += boxHeight + 3;
 
-    // Total amount
+    // Total amount (Net Payable if there are deductions)
     doc.setFillColor(...Colors.primary);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
-    doc.text("TOTAL AMOUNT:", margin + 8, yPos + 12);
+    const totalLabel = totals.totalDeductions > 0 ? "NET PAYABLE:" : "TOTAL AMOUNT:";
+    const totalAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
+    doc.text(totalLabel, margin + 8, yPos + 12);
     doc.setFontSize(14);
-    doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
+    doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
 }
 
@@ -1924,6 +2114,7 @@ async function generateAcceptanceLetter(data) {
     doc.text("COMPANY", sealX, sealY - 3, { align: "center" });
     doc.text("SEAL", sealX, sealY + 2, { align: "center" });
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
 }
 
@@ -2061,6 +2252,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
 
@@ -2073,7 +2265,7 @@ async function generateInvoice(data, invoiceDetails) {
 
     const documentNumber = DocumentRegistry.generateNumber('invoice');
 
-    addProfessionalHeader(doc, 'TAX INVOICE');
+    addProfessionalHeader(doc, 'INVOICE');
     addProfessionalFooter(doc);
 
     let yPos = 48;
@@ -2082,7 +2274,7 @@ async function generateInvoice(data, invoiceDetails) {
     doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("TAX INVOICE", pageWidth / 2, yPos, { align: "center" });
+    doc.text("INVOICE", pageWidth / 2, yPos, { align: "center" });
 
     doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
@@ -2180,20 +2372,33 @@ async function generateInvoice(data, invoiceDetails) {
 
     yPos = doc.lastAutoTable.finalY + 8;
 
-    // Summary
+    // Summary - build dynamic items
+    const summaryItems = [
+        ["Subtotal:", `KES ${numberWithCommas(totals.subtotal)}`],
+        [`VAT (${totals.vatPercentage}%):`, `KES ${numberWithCommas(totals.vat)}`],
+        [`Contingency (${totals.contingencyPercentage}%):`, `KES ${numberWithCommas(totals.contingency)}`],
+        ["Gross Total:", `KES ${numberWithCommas(totals.grossTotal)}`]
+    ];
+
+    // Add deductions if applicable
+    if (totals.withholdingTaxPercentage > 0) {
+        summaryItems.push([`Less: WHT (${totals.withholdingTaxPercentage}%):`, `(KES ${numberWithCommas(totals.withholdingTax)})`]);
+    }
+    if (totals.subcontractorWHTPercentage > 0) {
+        summaryItems.push([`Less: Subcontractor WHT (${totals.subcontractorWHTPercentage}%):`, `(KES ${numberWithCommas(totals.subcontractorWHT)})`]);
+    }
+    if (totals.retentionPercentage > 0) {
+        summaryItems.push([`Less: Retention (${totals.retentionPercentage}%):`, `(KES ${numberWithCommas(totals.retention)})`]);
+    }
+
+    const boxHeight = 8 + (summaryItems.length * 8) + 5;
     doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 35, 3, 3, 'F');
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), boxHeight, 3, 3, 'F');
 
     let summaryY = yPos + 8;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
-
-    const summaryItems = [
-        ["Subtotal:", `KES ${numberWithCommas(totals.subtotal)}`],
-        [`VAT (${totals.vatPercentage}%):`, `KES ${numberWithCommas(totals.vat)}`],
-        [`Contingency (${totals.contingencyPercentage}%):`, `KES ${numberWithCommas(totals.contingency)}`]
-    ];
 
     summaryItems.forEach(([label, value]) => {
         doc.text(label, margin + 5, summaryY);
@@ -2201,7 +2406,7 @@ async function generateInvoice(data, invoiceDetails) {
         summaryY += 8;
     });
 
-    yPos += 38;
+    yPos += boxHeight + 3;
 
     // Total
     doc.setFillColor(...Colors.primary);
@@ -2210,8 +2415,10 @@ async function generateInvoice(data, invoiceDetails) {
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.text("TOTAL AMOUNT:", margin + 5, yPos + 11);
-    doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
+    const totalLabel = totals.totalDeductions > 0 ? "NET PAYABLE:" : "TOTAL AMOUNT:";
+    const totalAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
+    doc.text(totalLabel, margin + 5, yPos + 11);
+    doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
 
     yPos += 22;
 
@@ -2219,10 +2426,11 @@ async function generateInvoice(data, invoiceDetails) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(...Colors.textMuted);
-    const disclaimer = "This is a tax invoice issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
+    const disclaimer = "This invoice is issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
     const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
 
@@ -2309,26 +2517,28 @@ async function generateDeliveryNote(data) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 18;
+    yPos = doc.lastAutoTable.finalY + 15;
 
-    // Signature section
+    // Signature section - two columns
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
+    doc.setTextColor(...Colors.text);
     doc.text("Delivered By:", margin, yPos);
-    doc.text("Received By:", margin + 95, yPos);
+    doc.text("Received By:", pageWidth / 2 + 10, yPos);
 
     yPos += 12;
     doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
-    doc.line(margin, yPos, margin + 65, yPos);
-    doc.line(margin + 95, yPos, margin + 160, yPos);
+    doc.line(margin, yPos, margin + 70, yPos);
+    doc.line(pageWidth / 2 + 10, yPos, pageWidth - margin, yPos);
 
     yPos += 5;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.text("Signature & Date", margin, yPos);
-    doc.text("Signature & Date", margin + 95, yPos);
+    doc.text("Signature & Date", pageWidth / 2 + 10, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
 
@@ -2442,27 +2652,12 @@ async function generateContractAgreement(data) {
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
 
-    const terms = [
-        "1. The Contractor shall execute and complete the Works in accordance with the Contract Documents and the instructions of the Employer's authorized representative.",
-        "2. All materials, workmanship and work shall comply with the specifications and shall be to the satisfaction of the Employer's representative and in accordance with the National Building Code 2024.",
-        "3. Payment shall be made in accordance with the agreed payment schedule upon submission and certification of interim valuations by the quantity surveyor.",
-        "4. Any variations to the Works shall be executed only upon written instruction from the Employer and shall be valued in accordance with the Contract rates.",
-        "5. This Contract shall be governed by and construed in accordance with the Laws of Kenya, and disputes shall be resolved through arbitration as per the Arbitration Act (Cap 49)."
-    ];
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...Colors.textMuted);
+    doc.text("Subject to standard terms. Defects liability: 6 months. Governed by Laws of Kenya.", margin, yPos);
 
-    terms.forEach(term => {
-        yPos = SmartSpacing.checkAndAddPage(doc, yPos, 15, () => {
-            pageNum++;
-            addHeader();
-            addFooter();
-        });
-
-        const lines = doc.splitTextToSize(term, pageWidth - (2 * margin));
-        doc.text(lines, margin, yPos);
-        yPos += (lines.length * 4.5) + 3;
-    });
-
-    yPos += 10;
+    yPos += 12;
 
     // Signatures
     yPos = SmartSpacing.checkAndAddPage(doc, yPos, 50, () => {
@@ -2507,6 +2702,7 @@ async function generateContractAgreement(data) {
     doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
     doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
 }
 
@@ -2594,6 +2790,7 @@ async function generateRecommendationLetter(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
 }
 
@@ -2704,6 +2901,7 @@ async function generateReceipt(data, receiptDetails) {
     yPos += 5;
     doc.text("Pintorex Construction Limited", margin, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
 }
 
@@ -2817,9 +3015,9 @@ async function generateLPO(data, lpoDetails) {
     doc.text("TOTAL:", margin + 5, yPos + 9.5);
     doc.text(`KES ${numberWithCommas(materialsTotal)}`, pageWidth - margin - 5, yPos + 9.5, { align: "right" });
 
-    yPos += 22;
+    yPos += 18;
 
-    // Authorization
+    // Signature section
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
@@ -2828,7 +3026,7 @@ async function generateLPO(data, lpoDetails) {
 
     doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
-    doc.line(margin, yPos, margin + 55, yPos);
+    doc.line(margin, yPos, margin + 60, yPos);
     yPos += 5;
 
     doc.setFont("helvetica", "normal");
@@ -2837,5 +3035,6 @@ async function generateLPO(data, lpoDetails) {
     yPos += 4;
     doc.text("Pintorex Construction Limited", margin, yPos);
 
+    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-LPO-${documentNumber}.pdf`);
 }

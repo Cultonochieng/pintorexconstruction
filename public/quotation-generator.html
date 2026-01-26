@@ -229,6 +229,14 @@
         .material-row .remove-btn:hover {
             background: #DC2626;
         }
+        .material-row .unit-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .material-row .custom-unit-input {
+            font-size: 0.8rem;
+        }
 
         @media (max-width: 768px) {
             .material-row {
@@ -714,8 +722,14 @@
                                 <option value="Flooring Installation">Flooring Installation</option>
                                 <option value="Custom Carpentry">Custom Carpentry</option>
                                 <option value="Site Preparation">Site Preparation</option>
-                                <option value="Other">Other (Please specify in description)</option>
+                                <option value="Other">Other (Specify below)</option>
                             </select>
+                        </div>
+                        <div id="customProjectTypeDiv" class="hidden">
+                            <label for="customProjectType" class="form-label required-field">Specify Project Type</label>
+                            <input type="text" id="customProjectType" name="customProjectType" maxlength="100"
+                                   class="form-input"
+                                   placeholder="Enter your project type">
                         </div>
                     </div>
                 </fieldset>
@@ -798,6 +812,39 @@
                                 <option value="15">15%</option>
                                 <option value="20">20%</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- Tax Deductions Section -->
+                    <div class="mt-6 pt-4 border-t border-gray-200">
+                        <h4 class="text-sm font-bold text-gray-700 mb-4">TAX DEDUCTIONS & RETENTION (Optional)</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label for="withholdingTax" class="form-label">Withholding Tax</label>
+                                <select id="withholdingTax" name="withholdingTax" class="form-input">
+                                    <option value="0">None (0%)</option>
+                                    <option value="3">3% (Standard WHT)</option>
+                                    <option value="5">5% (Non-resident)</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Deducted at source per KRA requirements</p>
+                            </div>
+                            <div>
+                                <label for="subcontractorWHT" class="form-label">Subcontractor WHT</label>
+                                <select id="subcontractorWHT" name="subcontractorWHT" class="form-input">
+                                    <option value="0">Not Applicable</option>
+                                    <option value="2">2% (Subcontracted Work)</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">When work is subcontracted to another contractor</p>
+                            </div>
+                            <div>
+                                <label for="retentionPercentage" class="form-label">Retention</label>
+                                <select id="retentionPercentage" name="retentionPercentage" class="form-input">
+                                    <option value="0">No Retention (0%)</option>
+                                    <option value="5">5%</option>
+                                    <option value="10">10%</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Held until defects liability period ends</p>
+                            </div>
                         </div>
                     </div>
                 </fieldset>
