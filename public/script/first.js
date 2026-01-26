@@ -91,28 +91,40 @@ const mobileMenu = document.getElementById('mobile-menu');
 if (mobileMenuButton && mobileMenu) {
     const mobileMenuLinks = mobileMenu.querySelectorAll('a');
 
+    const openMobileMenu = () => {
+        mobileMenu.classList.remove('-translate-y-full', 'opacity-0');
+        mobileMenu.classList.add('translate-y-0', 'opacity-100');
+        mobileMenu.setAttribute('aria-hidden', 'false');
+        mobileMenuButton.setAttribute('aria-expanded', 'true');
+    };
+
+    const closeMobileMenu = () => {
+        mobileMenu.classList.remove('translate-y-0', 'opacity-100');
+        mobileMenu.classList.add('-translate-y-full', 'opacity-0');
+        mobileMenu.setAttribute('aria-hidden', 'true');
+        mobileMenuButton.setAttribute('aria-expanded', 'false');
+    };
+
     mobileMenuButton.addEventListener('click', () => {
-        const isOpen = !mobileMenu.classList.contains('-translate-x-full');
-        mobileMenu.classList.toggle('-translate-x-full');
-        mobileMenu.setAttribute('aria-hidden', isOpen);
-        mobileMenuButton.setAttribute('aria-expanded', !isOpen);
+        const isOpen = mobileMenu.classList.contains('translate-y-0');
+        if (isOpen) {
+            closeMobileMenu();
+        } else {
+            openMobileMenu();
+        }
     });
 
     // Close mobile menu when a link is clicked
     mobileMenuLinks.forEach(link => {
         link.addEventListener('click', () => {
-            mobileMenu.classList.add('-translate-x-full');
-            mobileMenu.setAttribute('aria-hidden', 'true');
-            mobileMenuButton.setAttribute('aria-expanded', 'false');
+            closeMobileMenu();
         });
     });
 
     // Close mobile menu when clicking outside
     document.addEventListener('click', (event) => {
         if (!mobileMenu.contains(event.target) && !mobileMenuButton.contains(event.target)) {
-            mobileMenu.classList.add('-translate-x-full');
-            mobileMenu.setAttribute('aria-hidden', 'true');
-            mobileMenuButton.setAttribute('aria-expanded', 'false');
+            closeMobileMenu();
         }
     });
 }
