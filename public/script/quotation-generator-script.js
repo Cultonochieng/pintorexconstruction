@@ -1143,6 +1143,7 @@ const SmartSpacing = {
 function addProfessionalHeader(doc, documentType = '') {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
+    const headerStartX = margin + 5; // Slightly to the right
 
     // Elegant header bar
     doc.setFillColor(...Colors.secondary);
@@ -1156,31 +1157,31 @@ function addProfessionalHeader(doc, documentType = '') {
     let logoWidth = 0;
     if (logoDataUrl) {
         try {
-            const logoHeight = 22; // Fixed height to fit in header
-            logoWidth = logoHeight * logoAspectRatio; // Calculate width based on aspect ratio
-            doc.addImage(logoDataUrl, 'PNG', margin, 5, logoWidth, logoHeight);
+            const logoHeight = 20;
+            logoWidth = logoHeight * logoAspectRatio;
+            doc.addImage(logoDataUrl, 'PNG', headerStartX, 6, logoWidth, logoHeight);
         } catch (e) {
             console.warn('Could not add logo to PDF');
             logoWidth = 0;
         }
     }
 
-    // Company name - positioned after logo
-    const textStartX = margin + (logoWidth > 0 ? logoWidth + 5 : 0);
+    // Company name - positioned close to logo
+    const textStartX = headerStartX + (logoWidth > 0 ? logoWidth + 3 : 0);
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("PINTOREX", textStartX, 14);
+    doc.setFontSize(14);
+    doc.text("PINTOREX", textStartX, 13);
 
     // Tagline
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("CONSTRUCTION LIMITED", textStartX, 20);
     doc.setFontSize(7);
-    doc.text("Building Excellence, Crafting Dreams", textStartX, 26);
+    doc.text("CONSTRUCTION LIMITED", textStartX, 19);
+    doc.setFontSize(6);
+    doc.text("Building Excellence, Crafting Dreams", textStartX, 24);
 
-    // Contact info on right - aligned to far right
-    doc.setFontSize(8);
+    // Contact info on right
+    doc.setFontSize(7);
     doc.setFont("helvetica", "normal");
     const contactInfo = [
         "Tel: +254 769 157174",
@@ -1205,7 +1206,7 @@ function addProfessionalHeader(doc, documentType = '') {
     }
 }
 
-function addProfessionalFooter(doc, pageNumber = null) {
+function addProfessionalFooter(doc, pageNumber = null, verificationCode = null) {
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
     const margin = 15;
@@ -1227,51 +1228,25 @@ function addProfessionalFooter(doc, pageNumber = null) {
     doc.text("Pintorex Construction Limited | Building Excellence, Crafting Dreams", pageWidth / 2, footerY + 6, { align: "center" });
     doc.text("+254 769 157174 | pintorexkenya@gmail.com | Migori Town, Kenya", pageWidth / 2, footerY + 11, { align: "center" });
 
-    // Page number
+    // Page number on right
     if (pageNumber !== null) {
-        doc.setFontSize(8);
+        doc.setFontSize(7);
         doc.text(`Page ${pageNumber}`, pageWidth - margin, footerY + 9, { align: "right" });
     }
-}
 
-function addWatermark(doc) {
-    const pageWidth = doc.internal.pageSize.width;
-    const pageHeight = doc.internal.pageSize.height;
-
-    // Set watermark properties - very light gray
-    doc.setTextColor(230, 230, 230);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(50);
-
-    // Create diagonal watermark text
-    const watermarkText = "PINTOREX";
-
-    // Draw watermark in center of page at an angle
-    const centerX = pageWidth / 2;
-    const centerY = pageHeight / 2;
-
-    // Add rotated watermark
-    doc.text(watermarkText, centerX, centerY, {
-        align: "center",
-        angle: 45,
-        renderingMode: 'fill'
-    });
-
-    // Add smaller authenticity text below
-    doc.setFontSize(12);
-    doc.setTextColor(220, 220, 220);
-    doc.text("ORIGINAL DOCUMENT", centerX, centerY + 20, {
-        align: "center",
-        angle: 45
-    });
-}
-
-function addWatermarkToAllPages(doc) {
-    const totalPages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        addWatermark(doc);
+    // Verification code on left (subtle document identifier)
+    if (verificationCode) {
+        doc.setFontSize(5);
+        doc.setTextColor(180, 180, 180);
+        doc.text(`Ref: ${verificationCode}`, margin, footerY + 15);
     }
+}
+
+// Generate unique verification code for document authenticity
+function generateVerificationCode(docType, docNumber) {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `PCL-${docType.substring(0, 3).toUpperCase()}-${timestamp}-${random}`;
 }
 
 // ============================================================================
@@ -1972,7 +1947,6 @@ async function generateProfessionalQuotation(data) {
     doc.setFontSize(14);
     doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
 }
 
@@ -2114,7 +2088,6 @@ async function generateAcceptanceLetter(data) {
     doc.text("COMPANY", sealX, sealY - 3, { align: "center" });
     doc.text("SEAL", sealX, sealY + 2, { align: "center" });
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
 }
 
@@ -2252,7 +2225,6 @@ async function generatePaymentRequest(data, paymentDetails) {
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
 
@@ -2430,7 +2402,6 @@ async function generateInvoice(data, invoiceDetails) {
     const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
 
@@ -2538,7 +2509,6 @@ async function generateDeliveryNote(data) {
     doc.text("Signature & Date", margin, yPos);
     doc.text("Signature & Date", pageWidth / 2 + 10, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
 
@@ -2702,7 +2672,6 @@ async function generateContractAgreement(data) {
     doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
     doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
 }
 
@@ -2790,7 +2759,6 @@ async function generateRecommendationLetter(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Pintorex Construction Limited", margin, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
 }
 
@@ -2901,7 +2869,6 @@ async function generateReceipt(data, receiptDetails) {
     yPos += 5;
     doc.text("Pintorex Construction Limited", margin, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
 }
 
@@ -3035,6 +3002,5 @@ async function generateLPO(data, lpoDetails) {
     yPos += 4;
     doc.text("Pintorex Construction Limited", margin, yPos);
 
-    addWatermarkToAllPages(doc);
     doc.save(`Pintorex-LPO-${documentNumber}.pdf`);
 }
