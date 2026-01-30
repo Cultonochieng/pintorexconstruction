@@ -1441,46 +1441,6 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
         }
     }
 
-    // ===== HELPER: Render Code 39 barcode =====
-    function renderCode39(barcodeText, bx, by, bWidth, bHeight) {
-        const C39 = {
-            '0':'000110100','1':'100100001','2':'001100001','3':'101100000',
-            '4':'000110001','5':'100110000','6':'001110000','7':'000100101',
-            '8':'100100100','9':'001100100','A':'100001001','B':'001001001',
-            'C':'101001000','D':'000011001','E':'100011000','F':'001011000',
-            'G':'000001101','H':'100001100','I':'001001100','J':'000011100',
-            'K':'100000011','L':'001000011','M':'101000010','N':'000010011',
-            'O':'100010010','P':'001010010','Q':'000000111','R':'100000110',
-            'S':'001000110','T':'000010110','U':'110000001','V':'011000001',
-            'W':'111000000','X':'010010001','Y':'110010000','Z':'011010000',
-            '-':'010000101','.':'110000100',' ':'011000100','*':'010010100'
-        };
-        const full = '*' + barcodeText.toUpperCase() + '*';
-        let totalUnits = 0;
-        for (const ch of full) {
-            const p = C39[ch];
-            if (!p) continue;
-            for (const b of p) totalUnits += b === '1' ? 3 : 1;
-            totalUnits += 1;
-        }
-        totalUnits -= 1;
-        const uW = bWidth / totalUnits;
-        let cx = bx;
-        for (let ci = 0; ci < full.length; ci++) {
-            const p = C39[full[ci]];
-            if (!p) continue;
-            for (let i = 0; i < 9; i++) {
-                const w = p[i] === '1' ? 3 * uW : uW;
-                if (i % 2 === 0) {
-                    doc.setFillColor(...Colors.secondary);
-                    doc.rect(cx, by, w, bHeight, 'F');
-                }
-                cx += w;
-            }
-            if (ci < full.length - 1) cx += uW;
-        }
-    }
-
     // === Layout radii ===
     const outerR = radius;
     const borderR = radius - 2;
@@ -1536,46 +1496,24 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
     doc.setLineWidth(0.25);
     doc.circle(x, y, innerR - 0.9, 'S');
 
-    // ===== 8. CENTER CONTENT =====
-    // "PCL" monogram — large, bold, orange
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...Colors.primary);
-    doc.text("PCL", x, y - 1, { align: "center" });
-
-    // Decorative orange line beneath monogram
-    doc.setDrawColor(...Colors.primary);
-    doc.setLineWidth(0.4);
-    doc.line(x - 6.5, y + 1, x + 6.5, y + 1);
-
-    // "VERIFIED" label
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(5.5);
-    doc.setTextColor(...Colors.secondary);
-    doc.text("VERIFIED", x, y + 4, { align: "center" });
-
-    // Orange decorative line under VERIFIED
-    doc.setDrawColor(...Colors.primary);
-    doc.setLineWidth(0.3);
-    doc.line(x - 5, y + 5.2, x + 5, y + 5.2);
-
-    // Date
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(3);
-    doc.setTextColor(...Colors.textMuted);
-    doc.text(dateStr, x, y + 7, { align: "center" });
-
-    // ===== 9. CODE 39 BARCODE (Scannable Verification) =====
-    // Encodes first 4 chars of hash — scannable by standard barcode reader apps
-    const bcData = hashStr.substring(0, 4);
-    const bcWidth = innerR * 1.5;
-    renderCode39(bcData, x - bcWidth / 2, y + 7.8, bcWidth, 1.2);
-
-    // Human-readable verification code
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(2.5);
-    doc.setTextColor(...Colors.textMuted);
-    doc.text(hashStr, x, y + 10, { align: "center" });
+    // ===== 8. CENTER QR CODE =====
+    // Render verification QR code elegantly centered inside the seal
+    try {
+        const docId = verificationData.documentId || generateDocumentUUID(verificationData.docType || 'DOC', verificationData.docNumber || '000');
+        const verificationUrl = `https://pintorexconstruction.onrender.com/verify/${docId}`;
+        const qr = qrcode(0, 'M');
+        qr.addData(verificationUrl);
+        qr.make();
+        const qrDataUrl = qr.createDataURL(4, 0);
+        const qrSize = innerR * 1.25;
+        doc.addImage(qrDataUrl, 'GIF', x - qrSize / 2, y - qrSize / 2, qrSize, qrSize);
+    } catch (e) {
+        // QR generation failed — show minimal fallback
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(5);
+        doc.setTextColor(...Colors.primary);
+        doc.text("VERIFIED", x, y + 1, { align: "center" });
+    }
 
     // --- Restore graphics state if watermark mode ---
     if (gStateApplied) {
@@ -1600,24 +1538,6 @@ function generateDocumentUUID(docType, docNumber) {
     return `${hex}-${rand.substring(0, 4)}-${rand.substring(4, 8)}-${docNumber.replace(/[^A-Za-z0-9]/g, '')}`.toLowerCase();
 }
 
-function drawVerificationQR(doc, x, y, size, sealData) {
-    try {
-        const docId = sealData.documentId || generateDocumentUUID(sealData.docType, sealData.docNumber);
-        const verificationUrl = `https://pintorexconstruction.onrender.com/verify/${docId}`;
-        const qr = qrcode(0, 'M');
-        qr.addData(verificationUrl);
-        qr.make();
-        const qrDataUrl = qr.createDataURL(4, 0);
-        doc.addImage(qrDataUrl, 'GIF', x, y, size, size);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(4);
-        doc.setTextColor(...Colors.textMuted);
-        doc.text("Scan to verify", x + size / 2, y + size + 2.5, { align: "center" });
-    } catch (e) {
-        console.warn('QR code generation failed:', e);
-    }
-}
-
 function placeSealAndQR(doc, contentEndY, sealData, options) {
     options = options || {};
     const pageWidth = doc.internal.pageSize.width;
@@ -1626,22 +1546,16 @@ function placeSealAndQR(doc, contentEndY, sealData, options) {
     const sealRadius = 18;
     const footerTopY = pageHeight - 19;
     const maxAllowedBottom = footerTopY - 3;
-    const qrSize = 15;
 
     // Explicit watermark mode (e.g., Invoice)
     if (sealData.watermark === true) {
-        drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, pageHeight / 2 + 40, sealRadius, sealData);
-        const qrY = contentEndY + 3;
-        const qrX = pageWidth - margin - qrSize;
-        if (qrY + qrSize + 4 < maxAllowedBottom) {
-            drawVerificationQR(doc, qrX, qrY, qrSize, sealData);
-        }
+        drawCompanySeal(doc, pageWidth / 2, pageHeight / 2 + 20, sealRadius, sealData);
         return;
     }
 
     // Calculate seal center position
-    var sealCenterX, sealCenterY;
-    sealCenterX = pageWidth - margin - sealRadius - 2;
+    var sealCenterX = pageWidth - margin - sealRadius - 2;
+    var sealCenterY;
 
     if (options.placement === 'centered-below') {
         sealCenterX = pageWidth / 2;
@@ -1660,25 +1574,11 @@ function placeSealAndQR(doc, contentEndY, sealData, options) {
             ...sealData,
             watermark: true
         });
-        var qrFallbackY = Math.min(contentEndY + 3, maxAllowedBottom - qrSize - 4);
-        drawVerificationQR(doc, pageWidth - margin - qrSize, qrFallbackY, qrSize, sealData);
         return;
     }
 
-    // Draw seal at calculated position
+    // Draw seal (QR is rendered inside the seal center)
     drawCompanySeal(doc, sealCenterX, sealCenterY, sealRadius, sealData);
-
-    // Draw QR code below the seal
-    var qrX = sealCenterX - qrSize / 2;
-    var qrY = sealCenterY + sealRadius + 2;
-
-    if (qrY + qrSize + 4 > maxAllowedBottom) {
-        // No room below — place QR to the left of the seal
-        qrX = sealCenterX - sealRadius - qrSize - 3;
-        qrY = sealCenterY - qrSize / 2;
-    }
-
-    drawVerificationQR(doc, qrX, qrY, qrSize, sealData);
 }
 
 // ============================================================================
@@ -2410,14 +2310,14 @@ async function generateProfessionalQuotation(data) {
 
     // Professional seal with QR verification
     const qtDocId = generateDocumentUUID('QUOTATION', quotationNumber);
-    placeSealAndQR(doc, yPos + 18, {
+    placeSealAndQR(doc, yPos + 20, {
         docType: 'QUOTATION',
         docNumber: quotationNumber,
         date: new Date().toLocaleDateString('en-GB'),
         documentId: qtDocId
     }, {
         placement: 'right-side',
-        signatureBlockY: yPos
+        signatureBlockY: yPos + 20
     });
     const qtAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(qtDocId, 'QUOTATION', quotationNumber, data.clientName, qtAmount).catch(() => {});
