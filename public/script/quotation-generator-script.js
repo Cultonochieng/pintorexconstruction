@@ -1143,7 +1143,7 @@ const SmartSpacing = {
 function addProfessionalHeader(doc, documentType = '') {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
-    const headerStartX = margin + 5; // Slightly to the right
+    const headerStartX = margin; // Flush left with document margin
 
     // Elegant header bar
     doc.setFillColor(...Colors.secondary);
@@ -1247,6 +1247,212 @@ function generateVerificationCode(docType, docNumber) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     return `PCL-${docType.substring(0, 3).toUpperCase()}-${timestamp}-${random}`;
+}
+
+// ============================================================================
+// PROFESSIONAL CIRCULAR COMPANY SEAL WITH ENCODED VERIFICATION
+// ============================================================================
+
+function drawCompanySeal(doc, x, y, radius, verificationData) {
+    const dateStr = verificationData.date || new Date().toLocaleDateString('en-GB');
+    const hashInput = `PINTOREX|${verificationData.docType}|${verificationData.docNumber}|${dateStr}`;
+
+    // Generate verification hash
+    let hash = 0;
+    for (let i = 0; i < hashInput.length; i++) {
+        const char = hashInput.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    const hashStr = Math.abs(hash).toString(36).toUpperCase().padStart(8, '0').substring(0, 8);
+    const hashNum = Math.abs(hash);
+
+    // --- Watermark mode: semi-transparent for dense pages ---
+    const isWatermark = verificationData.watermark === true;
+    let gStateApplied = false;
+    if (isWatermark) {
+        try {
+            doc.saveGraphicsState();
+            doc.setGState(new doc.GState({ opacity: 0.15, 'stroke-opacity': 0.15 }));
+            gStateApplied = true;
+        } catch (e) {
+            // GState not supported — seal draws normally
+        }
+    }
+
+    // ===== HELPER: Draw text along a circular arc =====
+    // Clock-angle convention: 0° = 12 o'clock (top), 90° = 3 o'clock (right)
+    // faceInward: letter tops point toward center (standard for bottom arc text)
+    function drawArcText(text, cx, cy, arcR, startDeg, endDeg, faceInward) {
+        const chars = text.split('');
+        const n = chars.length;
+        if (n === 0) return;
+        const step = n > 1 ? (endDeg - startDeg) / (n - 1) : 0;
+        for (let i = 0; i < n; i++) {
+            const deg = n > 1 ? startDeg + step * i : (startDeg + endDeg) / 2;
+            const rad = (deg * Math.PI) / 180;
+            const px = cx + arcR * Math.sin(rad);
+            const py = cy - arcR * Math.cos(rad);
+            const rot = faceInward ? (180 - deg) : -deg;
+            doc.text(chars[i], px, py, { angle: rot, align: 'center' });
+        }
+    }
+
+    // ===== HELPER: Draw five-pointed star =====
+    function drawStar(cx, cy, outerSR, innerSR, color) {
+        doc.setFillColor(...color);
+        for (let i = 0; i < 5; i++) {
+            const oa = (i * 72 - 90) * Math.PI / 180;
+            const la = oa - 36 * Math.PI / 180;
+            const ra = oa + 36 * Math.PI / 180;
+            doc.triangle(
+                cx + outerSR * Math.cos(oa), cy + outerSR * Math.sin(oa),
+                cx + innerSR * Math.cos(la), cy + innerSR * Math.sin(la),
+                cx + innerSR * Math.cos(ra), cy + innerSR * Math.sin(ra), 'F'
+            );
+        }
+    }
+
+    // ===== HELPER: Render Code 39 barcode =====
+    function renderCode39(barcodeText, bx, by, bWidth, bHeight) {
+        const C39 = {
+            '0':'000110100','1':'100100001','2':'001100001','3':'101100000',
+            '4':'000110001','5':'100110000','6':'001110000','7':'000100101',
+            '8':'100100100','9':'001100100','A':'100001001','B':'001001001',
+            'C':'101001000','D':'000011001','E':'100011000','F':'001011000',
+            'G':'000001101','H':'100001100','I':'001001100','J':'000011100',
+            'K':'100000011','L':'001000011','M':'101000010','N':'000010011',
+            'O':'100010010','P':'001010010','Q':'000000111','R':'100000110',
+            'S':'001000110','T':'000010110','U':'110000001','V':'011000001',
+            'W':'111000000','X':'010010001','Y':'110010000','Z':'011010000',
+            '-':'010000101','.':'110000100',' ':'011000100','*':'010010100'
+        };
+        const full = '*' + barcodeText.toUpperCase() + '*';
+        let totalUnits = 0;
+        for (const ch of full) {
+            const p = C39[ch];
+            if (!p) continue;
+            for (const b of p) totalUnits += b === '1' ? 3 : 1;
+            totalUnits += 1;
+        }
+        totalUnits -= 1;
+        const uW = bWidth / totalUnits;
+        let cx = bx;
+        for (let ci = 0; ci < full.length; ci++) {
+            const p = C39[full[ci]];
+            if (!p) continue;
+            for (let i = 0; i < 9; i++) {
+                const w = p[i] === '1' ? 3 * uW : uW;
+                if (i % 2 === 0) {
+                    doc.setFillColor(...Colors.secondary);
+                    doc.rect(cx, by, w, bHeight, 'F');
+                }
+                cx += w;
+            }
+            if (ci < full.length - 1) cx += uW;
+        }
+    }
+
+    // === Layout radii ===
+    const outerR = radius;
+    const borderR = radius - 2;
+    const textR = radius - 4.5;
+    const dotRingR = radius * 0.635;
+    const innerR = radius * 0.57;
+
+    // ===== 1. WHITE BACKGROUND =====
+    doc.setFillColor(255, 255, 255);
+    doc.circle(x, y, outerR, 'F');
+
+    // ===== 2. OUTER DOUBLE BORDER (dark slate) =====
+    doc.setDrawColor(...Colors.secondary);
+    doc.setLineWidth(1.8);
+    doc.circle(x, y, outerR, 'S');
+    doc.setLineWidth(0.4);
+    doc.circle(x, y, borderR, 'S');
+
+    // ===== 3. ENCODED DOT RING (Document Verification Pattern) =====
+    // 36 dots encode the hash as a unique binary fingerprint per document.
+    // Large dot = 1 bit, small dot = 0 bit — serves as a visual authenticity marker.
+    const numDots = 36;
+    for (let i = 0; i < numDots; i++) {
+        const bit = (hashNum >> (i % 32)) & 1;
+        const dotDeg = (i / numDots) * 360;
+        const dotRad = (dotDeg * Math.PI) / 180;
+        const dx = x + dotRingR * Math.sin(dotRad);
+        const dy = y - dotRingR * Math.cos(dotRad);
+        doc.setFillColor(...Colors.primary);
+        doc.circle(dx, dy, bit ? 0.42 : 0.16, 'F');
+    }
+
+    // ===== 4. TOP ARC TEXT =====
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(4.2);
+    doc.setTextColor(...Colors.secondary);
+    drawArcText("PINTOREX  CONSTRUCTION  LTD", x, y, textR, -72, 72, false);
+
+    // ===== 5. STAR SEPARATORS (3 o'clock & 9 o'clock) =====
+    drawStar(x + textR, y, 1.3, 0.5, Colors.primary);
+    drawStar(x - textR, y, 1.3, 0.5, Colors.primary);
+
+    // ===== 6. BOTTOM ARC TEXT =====
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(3.8);
+    doc.setTextColor(...Colors.secondary);
+    drawArcText("MIGORI,  KENYA", x, y, textR, 218, 142, true);
+
+    // ===== 7. INNER ACCENT RING (orange) =====
+    doc.setDrawColor(...Colors.primary);
+    doc.setLineWidth(0.7);
+    doc.circle(x, y, innerR, 'S');
+    doc.setLineWidth(0.25);
+    doc.circle(x, y, innerR - 0.9, 'S');
+
+    // ===== 8. CENTER CONTENT =====
+    // "PCL" monogram — large, bold, orange
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(...Colors.primary);
+    doc.text("PCL", x, y - 1, { align: "center" });
+
+    // Decorative orange line beneath monogram
+    doc.setDrawColor(...Colors.primary);
+    doc.setLineWidth(0.4);
+    doc.line(x - 6.5, y + 1, x + 6.5, y + 1);
+
+    // "VERIFIED" label
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(5.5);
+    doc.setTextColor(...Colors.secondary);
+    doc.text("VERIFIED", x, y + 4, { align: "center" });
+
+    // Orange decorative line under VERIFIED
+    doc.setDrawColor(...Colors.primary);
+    doc.setLineWidth(0.3);
+    doc.line(x - 5, y + 5.2, x + 5, y + 5.2);
+
+    // Date
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(3);
+    doc.setTextColor(...Colors.textMuted);
+    doc.text(dateStr, x, y + 7, { align: "center" });
+
+    // ===== 9. CODE 39 BARCODE (Scannable Verification) =====
+    // Encodes first 4 chars of hash — scannable by standard barcode reader apps
+    const bcData = hashStr.substring(0, 4);
+    const bcWidth = innerR * 1.5;
+    renderCode39(bcData, x - bcWidth / 2, y + 7.8, bcWidth, 1.2);
+
+    // Human-readable verification code
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(2.5);
+    doc.setTextColor(...Colors.textMuted);
+    doc.text(hashStr, x, y + 10, { align: "center" });
+
+    // --- Restore graphics state if watermark mode ---
+    if (gStateApplied) {
+        try { doc.restoreGraphicsState(); } catch (e) { /* ignore */ }
+    }
 }
 
 // ============================================================================
@@ -1947,6 +2153,16 @@ async function generateProfessionalQuotation(data) {
     doc.setFontSize(14);
     doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'QUOTATION',
+        docNumber: quotationNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
+
     doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
 }
 
@@ -2019,7 +2235,7 @@ async function generateAcceptanceLetter(data) {
 
     const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
     doc.text(bodyLines, margin, yPos);
-    yPos += (bodyLines.length * 5) + 12;
+    yPos += (bodyLines.length * 5) + 8;
 
     // Project details
     doc.setFillColor(...Colors.subtle);
@@ -2066,27 +2282,26 @@ async function generateAcceptanceLetter(data) {
     sigY += 5;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("Project Manager", margin + 5, sigY);
+    doc.text("Joseph Ochieng", margin + 5, sigY);
 
     sigY += 5;
     doc.setFont("helvetica", "normal");
-    doc.text("Pintorex Construction Limited", margin + 5, sigY);
+    doc.text("Director/Operations Manager", margin + 5, sigY);
 
     sigY += 6;
     doc.setFontSize(8);
     doc.setTextColor(...Colors.textMuted);
     doc.text("Tel: +254 769 157174", margin + 5, sigY);
 
-    // Seal
-    const sealX = pageWidth - margin - 22;
-    const sealY = yPos + 16;
-    doc.setDrawColor(...Colors.secondary);
-    doc.setLineWidth(0.7);
-    doc.circle(sealX, sealY, 13, 'S');
-    doc.setFontSize(6);
-    doc.setTextColor(...Colors.secondary);
-    doc.text("COMPANY", sealX, sealY - 3, { align: "center" });
-    doc.text("SEAL", sealX, sealY + 2, { align: "center" });
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'ACCEPTANCE',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
 }
@@ -2206,24 +2421,34 @@ async function generatePaymentRequest(data, paymentDetails) {
         payY += 5;
     });
 
-    yPos += 52;
+    yPos += 47;
 
     // Signature
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text("Prepared By:", margin, yPos);
-    yPos += 10;
+    yPos += 8;
 
     doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
-    yPos += 5;
+    yPos += 4;
 
     doc.setFont("helvetica", "bold");
-    doc.text("Project Manager", margin, yPos);
-    yPos += 5;
+    doc.text("Joseph Ochieng", margin, yPos);
+    yPos += 4;
     doc.setFont("helvetica", "normal");
-    doc.text("Pintorex Construction Limited", margin, yPos);
+    doc.text("Director/Operations Manager", margin, yPos);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'PAYMENT',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
@@ -2317,7 +2542,7 @@ async function generateInvoice(data, invoiceDetails) {
 
     doc.autoTable({
         startY: yPos,
-        head: [["#", "Description", "Unit", "Qty", "Unit Price", "Amount"]],
+        head: [["#", "Description", "Unit", "Qty", "Unit Price (KES)", "Amount (KES)"]],
         body: tableData,
         styles: {
             fontSize: 9,
@@ -2335,8 +2560,8 @@ async function generateInvoice(data, invoiceDetails) {
             1: { cellWidth: 'auto' },
             2: { cellWidth: 20, halign: 'center' },
             3: { cellWidth: 18, halign: 'right' },
-            4: { cellWidth: 30, halign: 'right' },
-            5: { cellWidth: 30, halign: 'right' }
+            4: { cellWidth: 34, halign: 'right' },
+            5: { cellWidth: 34, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -2401,6 +2626,18 @@ async function generateInvoice(data, invoiceDetails) {
     const disclaimer = "This invoice is issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
     const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
+
+    // Professional seal with verification
+    // Invoice is content-dense — use watermark mode so seal doesn't obstruct amounts
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'INVOICE',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB'),
+        watermark: true
+    });
 
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
@@ -2508,6 +2745,23 @@ async function generateDeliveryNote(data) {
     doc.setFontSize(8);
     doc.text("Signature & Date", margin, yPos);
     doc.text("Signature & Date", pageWidth / 2 + 10, yPos);
+
+    yPos += 4;
+    doc.setFont("helvetica", "bold");
+    doc.text("Joseph Ochieng", margin, yPos);
+    yPos += 4;
+    doc.setFont("helvetica", "normal");
+    doc.text("Director/Operations Manager", margin, yPos);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'DELIVERY',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
@@ -2627,7 +2881,7 @@ async function generateContractAgreement(data) {
     doc.setTextColor(...Colors.textMuted);
     doc.text("Subject to standard terms. Defects liability: 6 months. Governed by Laws of Kenya.", margin, yPos);
 
-    yPos += 12;
+    yPos += 8;
 
     // Signatures
     yPos = SmartSpacing.checkAndAddPage(doc, yPos, 50, () => {
@@ -2660,7 +2914,7 @@ async function generateContractAgreement(data) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.text("Signature & Date", margin + 5, yPos + 23);
-    doc.text("Pintorex Construction Limited", margin + 5, yPos + 28);
+    doc.text("Joseph Ochieng - Director/Operations Manager", margin + 5, yPos + 28);
 
     // Client signature
     doc.setFont("helvetica", "bold");
@@ -2671,6 +2925,16 @@ async function generateContractAgreement(data) {
     doc.setFontSize(8);
     doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
     doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'CONTRACT',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
 }
@@ -2733,7 +2997,7 @@ async function generateRecommendationLetter(data) {
 
     bodyParagraphs.forEach(para => {
         if (para === "") {
-            yPos += 5;
+            yPos += 3;
         } else {
             const lines = doc.splitTextToSize(para, pageWidth - (2 * margin));
             doc.text(lines, margin, yPos);
@@ -2754,10 +3018,20 @@ async function generateRecommendationLetter(data) {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("Project Manager", margin, yPos);
+    doc.text("Joseph Ochieng", margin, yPos);
     yPos += 5;
     doc.setFont("helvetica", "normal");
-    doc.text("Pintorex Construction Limited", margin, yPos);
+    doc.text("Director/Operations Manager", margin, yPos);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'RECOMMENDATION',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
 }
@@ -2782,11 +3056,11 @@ async function generateReceipt(data, receiptDetails) {
     doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("OFFICIAL RECEIPT", pageWidth / 2, yPos, { align: "center" });
+    doc.text("RECEIPT", pageWidth / 2, yPos, { align: "center" });
 
     doc.setDrawColor(...Colors.primary);
     doc.setLineWidth(0.5);
-    doc.line(pageWidth / 2 - 38, yPos + 3, pageWidth / 2 + 38, yPos + 3);
+    doc.line(pageWidth / 2 - 22, yPos + 3, pageWidth / 2 + 22, yPos + 3);
 
     yPos += 10;
 
@@ -2867,7 +3141,21 @@ async function generateReceipt(data, receiptDetails) {
     doc.setFontSize(8);
     doc.text("Authorized Signature", margin, yPos);
     yPos += 5;
-    doc.text("Pintorex Construction Limited", margin, yPos);
+    doc.setFont("helvetica", "bold");
+    doc.text("Joseph Ochieng", margin, yPos);
+    yPos += 4;
+    doc.setFont("helvetica", "normal");
+    doc.text("Director/Operations Manager", margin, yPos);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'RECEIPT',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
 }
@@ -2938,7 +3226,7 @@ async function generateLPO(data, lpoDetails) {
 
     doc.autoTable({
         startY: yPos,
-        head: [["#", "Description", "Unit", "Qty", "Unit Price", "Total"]],
+        head: [["#", "Description", "Unit", "Qty", "Unit Price (KES)", "Total (KES)"]],
         body: materials.map((m, i) => [
             i + 1,
             m.name,
@@ -2963,8 +3251,8 @@ async function generateLPO(data, lpoDetails) {
             1: { cellWidth: 'auto' },
             2: { cellWidth: 22, halign: 'center' },
             3: { cellWidth: 22, halign: 'right' },
-            4: { cellWidth: 28, halign: 'right' },
-            5: { cellWidth: 28, halign: 'right' }
+            4: { cellWidth: 32, halign: 'right' },
+            5: { cellWidth: 32, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -3000,7 +3288,21 @@ async function generateLPO(data, lpoDetails) {
     doc.setFontSize(8);
     doc.text("Signature & Date", margin, yPos);
     yPos += 4;
-    doc.text("Pintorex Construction Limited", margin, yPos);
+    doc.setFont("helvetica", "bold");
+    doc.text("Joseph Ochieng", margin, yPos);
+    yPos += 4;
+    doc.setFont("helvetica", "normal");
+    doc.text("Director/Operations Manager", margin, yPos);
+
+    // Professional seal with verification
+    const sealRadius = 18;
+    const sealPageH = doc.internal.pageSize.height;
+    const sealCenterY = sealPageH - 19 - sealRadius - 2;
+    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+        docType: 'LPO',
+        docNumber: documentNumber,
+        date: new Date().toLocaleDateString('en-GB')
+    });
 
     doc.save(`Pintorex-LPO-${documentNumber}.pdf`);
 }
