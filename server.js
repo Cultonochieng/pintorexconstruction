@@ -7,6 +7,7 @@ const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const validator = require('validator');
+const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
@@ -40,9 +41,11 @@ app.use(helmet({
             ],
             imgSrc: ["'self'", "data:", "blob:", "https:"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            connectSrc: ["'self'", "https://api.emailjs.com"],
+            connectSrc: ["'self'", "https://api.emailjs.com", "https://*.supabase.co"],
             mediaSrc: ["'self'"],
             frameSrc: ["'self'", "https://*.openstreetmap.org"],
+            workerSrc: ["'self'"],
+            manifestSrc: ["'self'"],
         }
     },
     crossOriginEmbedderPolicy: false
@@ -128,9 +131,20 @@ app.post('/api/auth/verify', authLimiter, async (req, res) => {
             req.session.authenticated = true;
             req.session.authTime = Date.now();
 
+            // Generate offline access token for PWA (valid 30 days)
+            const offlineExpiry = Date.now() + (30 * 24 * 60 * 60 * 1000);
+            const secret = process.env.SESSION_SECRET || 'pintorex-dev-secret-change-in-production';
+            const tokenData = `pintorex-offline:${offlineExpiry}`;
+            const signature = crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+            const offlineToken = Buffer.from(JSON.stringify({
+                exp: offlineExpiry,
+                sig: signature
+            })).toString('base64');
+
             return res.json({
                 success: true,
-                message: 'Authentication successful'
+                message: 'Authentication successful',
+                offlineToken: offlineToken
             });
         } else {
             return res.status(401).json({
@@ -148,6 +162,25 @@ app.get('/api/auth/status', (req, res) => {
     res.json({
         authenticated: req.session.authenticated === true
     });
+});
+
+// Validate offline token endpoint (for re-validation when back online)
+app.post('/api/auth/validate-offline-token', (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) return res.status(400).json({ valid: false });
+
+        const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+        if (Date.now() > decoded.exp) return res.json({ valid: false });
+
+        const secret = process.env.SESSION_SECRET || 'pintorex-dev-secret-change-in-production';
+        const tokenData = `pintorex-offline:${decoded.exp}`;
+        const expectedSig = crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+
+        return res.json({ valid: decoded.sig === expectedSig });
+    } catch {
+        return res.json({ valid: false });
+    }
 });
 
 // Logout endpoint
@@ -252,6 +285,11 @@ app.get('/', (req, res) => {
 // Serve quotation generator
 app.get('/quotation-generator', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'quotation-generator.html'));
+});
+
+// Document verification page (QR code scans)
+app.get('/verify/:id', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'verify.html'));
 });
 
 // Handle 404 - serve index.html for SPA-like behavior

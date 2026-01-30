@@ -16,8 +16,14 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="images/logo_pint.png">
     <link rel="icon" type="image/png" sizes="16x16" href="images/logo_pint.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="images/logo_pint.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
     <link rel="shortcut icon" href="images/logo_pint.png">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Pintorex Docs">
 
     <!-- Theme Color -->
     <meta name="theme-color" content="#F97316">
@@ -26,7 +32,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="script/lib/tailwind.min.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
 
     <style>
@@ -948,10 +954,103 @@
     <!-- Toast notification -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <!-- Scripts (local copies for offline PWA support) -->
+    <script src="script/lib/jspdf.umd.min.js"></script>
+    <script src="script/lib/jspdf.plugin.autotable.min.js"></script>
+    <script src="script/lib/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="script/quotation-generator-script.js"></script>
+
+    <!-- Offline Status Indicator -->
+    <div id="offlineIndicator" style="display:none; position:fixed; top:0; left:0; right:0; background:#F59E0B; color:#1F2937; text-align:center; padding:8px 16px; font-size:0.85rem; font-weight:600; z-index:10001; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+        You are offline — documents can still be generated
+    </div>
+
+    <!-- PWA Install Prompt -->
+    <div id="pwaInstallBanner" style="display:none; position:fixed; bottom:0; left:0; right:0; background:#1F2937; color:white; padding:14px 20px; z-index:10001; box-shadow:0 -2px 8px rgba(0,0,0,0.15);">
+        <div style="max-width:600px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <span style="font-size:0.9rem;">Install this app for offline document generation</span>
+            <div style="display:flex; gap:8px; flex-shrink:0;">
+                <button id="pwaInstallBtn" style="background:#F97316; color:white; border:none; padding:8px 18px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">Install</button>
+                <button id="pwaInstallDismiss" style="background:transparent; color:#9CA3AF; border:1px solid #4B5563; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:0.85rem;">Later</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Worker Registration & PWA Logic -->
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('[PWA] Service Worker registered, scope:', registration.scope);
+
+                        // Check for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'activated') {
+                                    console.log('[PWA] New service worker activated');
+                                }
+                            });
+                        });
+                    })
+                    .catch((error) => {
+                        console.warn('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+
+        // Offline/Online status indicator
+        function updateOnlineStatus() {
+            const indicator = document.getElementById('offlineIndicator');
+            if (!navigator.onLine) {
+                indicator.style.display = 'block';
+                document.body.style.paddingTop = '40px';
+            } else {
+                indicator.style.display = 'none';
+                document.body.style.paddingTop = '0';
+            }
+        }
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        window.addEventListener('load', updateOnlineStatus);
+
+        // PWA Install prompt handling
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+
+            // Don't show if user dismissed before
+            if (localStorage.getItem('pintorex_pwa_dismissed')) return;
+
+            const banner = document.getElementById('pwaInstallBanner');
+            banner.style.display = 'block';
+        });
+
+        document.getElementById('pwaInstallBtn').addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('[PWA] Install prompt outcome:', outcome);
+            deferredPrompt = null;
+            document.getElementById('pwaInstallBanner').style.display = 'none';
+        });
+
+        document.getElementById('pwaInstallDismiss').addEventListener('click', () => {
+            document.getElementById('pwaInstallBanner').style.display = 'none';
+            localStorage.setItem('pintorex_pwa_dismissed', Date.now().toString());
+            deferredPrompt = null;
+        });
+
+        // Detect if already installed
+        window.addEventListener('appinstalled', () => {
+            console.log('[PWA] App installed');
+            document.getElementById('pwaInstallBanner').style.display = 'none';
+            deferredPrompt = null;
+        });
+    </script>
 </body>
 </html>

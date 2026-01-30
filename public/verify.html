@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Verification | Pintorex Construction Limited</title>
+    <link rel="icon" type="image/png" href="/images/logo_pint.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #1f2937;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            max-width: 480px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #f97316, #ea580c);
+            padding: 24px;
+            text-align: center;
+        }
+
+        .card-header img {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #fff;
+            padding: 4px;
+            margin-bottom: 12px;
+        }
+
+        .card-header h1 {
+            color: #fff;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .card-header p {
+            color: rgba(255,255,255,0.85);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .card-body {
+            padding: 32px 24px;
+            text-align: center;
+        }
+
+        /* Loading state */
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #f97316;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            color: #6b7280;
+            font-size: 15px;
+        }
+
+        /* Verified state */
+        .status-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 32px;
+        }
+
+        .status-icon.verified {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .status-icon.invalid {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .status-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .status-title.verified { color: #16a34a; }
+        .status-title.invalid { color: #dc2626; }
+
+        .status-subtitle {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        /* Document details table */
+        .details {
+            text-align: left;
+            border-top: 1px solid #e5e7eb;
+            margin-top: 8px;
+        }
+
+        .details-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 14px;
+        }
+
+        .details-row:last-child { border-bottom: none; }
+
+        .details-label {
+            color: #6b7280;
+            font-weight: 500;
+            flex-shrink: 0;
+            margin-right: 12px;
+        }
+
+        .details-value {
+            color: #1f2937;
+            font-weight: 600;
+            text-align: right;
+            word-break: break-word;
+        }
+
+        .card-footer {
+            padding: 16px 24px;
+            background: #f9fafb;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .card-footer a {
+            color: #f97316;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .card-footer a:hover { text-decoration: underline; }
+
+        .error-hint {
+            color: #9ca3af;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+
+        /* Hidden by default */
+        #loading, #verified, #invalid { display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <img src="/images/logo_pint.png" alt="Pintorex Construction" onerror="this.style.display='none'">
+            <h1>PINTOREX CONSTRUCTION LIMITED</h1>
+            <p>Document Verification Portal</p>
+        </div>
+
+        <div class="card-body">
+            <!-- Loading State -->
+            <div id="loading">
+                <div class="spinner"></div>
+                <p class="loading-text">Verifying document...</p>
+            </div>
+
+            <!-- Verified State -->
+            <div id="verified">
+                <div class="status-icon verified">&#10003;</div>
+                <h2 class="status-title verified">Document Verified</h2>
+                <p class="status-subtitle">This document was issued by Pintorex Construction Limited.</p>
+                <div class="details">
+                    <div class="details-row">
+                        <span class="details-label">Document Type</span>
+                        <span class="details-value" id="doc-type">—</span>
+                    </div>
+                    <div class="details-row">
+                        <span class="details-label">Document No.</span>
+                        <span class="details-value" id="doc-number">—</span>
+                    </div>
+                    <div class="details-row">
+                        <span class="details-label">Client</span>
+                        <span class="details-value" id="doc-client">—</span>
+                    </div>
+                    <div class="details-row">
+                        <span class="details-label">Amount</span>
+                        <span class="details-value" id="doc-amount">—</span>
+                    </div>
+                    <div class="details-row">
+                        <span class="details-label">Date Issued</span>
+                        <span class="details-value" id="doc-date">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Invalid State -->
+            <div id="invalid">
+                <div class="status-icon invalid">&#10007;</div>
+                <h2 class="status-title invalid">Document Not Found</h2>
+                <p class="status-subtitle">This document could not be verified. It may not exist in our records.</p>
+                <p class="error-hint">If you believe this is an error, please contact us directly.</p>
+            </div>
+        </div>
+
+        <div class="card-footer">
+            <a href="/">Visit Pintorex Construction</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+        (async function() {
+            const loadingEl = document.getElementById('loading');
+            const verifiedEl = document.getElementById('verified');
+            const invalidEl = document.getElementById('invalid');
+
+            // Extract document ID from URL path: /verify/{id}
+            const pathParts = window.location.pathname.split('/');
+            const docId = pathParts[pathParts.length - 1];
+
+            if (!docId || docId === 'verify') {
+                invalidEl.style.display = 'block';
+                return;
+            }
+
+            loadingEl.style.display = 'block';
+
+            // Supabase config — these must match the quotation generator script
+            const SUPABASE_URL = 'https://qjqgfbwirphnrbnvsbar.supabase.co';
+            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcWdmYndpcnBobnJibnZzYmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NzQ0MjYsImV4cCI6MjA4NTM1MDQyNn0.WM2V0PlIpQAVzVSva9twFHPTNnrbgRKK-tQ3bPTPk_0';
+
+            if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+                // Supabase not configured — show a configuration message
+                loadingEl.style.display = 'none';
+                invalidEl.style.display = 'block';
+                document.querySelector('#invalid .status-subtitle').textContent =
+                    'Verification service is not yet configured. Please contact Pintorex Construction directly.';
+                return;
+            }
+
+            try {
+                const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+                const { data, error } = await client
+                    .from('document_records')
+                    .select('*')
+                    .eq('document_id', docId)
+                    .single();
+
+                loadingEl.style.display = 'none';
+
+                if (error || !data) {
+                    invalidEl.style.display = 'block';
+                    return;
+                }
+
+                // Populate verified details
+                document.getElementById('doc-type').textContent = data.doc_type || '—';
+                document.getElementById('doc-number').textContent = data.doc_number || '—';
+                document.getElementById('doc-client').textContent = data.client_name || '—';
+
+                if (data.amount != null) {
+                    const formatted = Number(data.amount).toLocaleString('en-KE', {
+                        style: 'currency',
+                        currency: 'KES',
+                        minimumFractionDigits: 2
+                    });
+                    document.getElementById('doc-amount').textContent = formatted;
+                }
+
+                if (data.date_generated) {
+                    const date = new Date(data.date_generated);
+                    document.getElementById('doc-date').textContent = date.toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                    });
+                }
+
+                verifiedEl.style.display = 'block';
+
+            } catch (err) {
+                console.error('Verification error:', err);
+                loadingEl.style.display = 'none';
+                invalidEl.style.display = 'block';
+            }
+        })();
+    </script>
+</body>
+</html>

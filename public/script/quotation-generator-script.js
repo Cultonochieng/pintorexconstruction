@@ -22,6 +22,68 @@ const Colors = {
 };
 
 // ============================================================================
+// SUPABASE CLIENT CONFIGURATION (Document Verification)
+// ============================================================================
+
+const SUPABASE_URL = 'https://qjqgfbwirphnrbnvsbar.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcWdmYndpcnBobnJibnZzYmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NzQ0MjYsImV4cCI6MjA4NTM1MDQyNn0.WM2V0PlIpQAVzVSva9twFHPTNnrbgRKK-tQ3bPTPk_0';
+
+let supabaseClient = null;
+try {
+    if (SUPABASE_URL && SUPABASE_ANON_KEY && typeof supabase !== 'undefined' && supabase.createClient) {
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+} catch (e) {
+    console.warn('Supabase client not available:', e);
+}
+
+async function storeDocumentRecord(docId, docType, docNumber, clientName, amount) {
+    if (!supabaseClient) return null;
+    try {
+        const { data, error } = await supabaseClient
+            .from('document_records')
+            .insert({
+                document_id: docId,
+                doc_type: docType,
+                doc_number: docNumber,
+                client_name: clientName,
+                amount: amount,
+                date_generated: new Date().toISOString(),
+                gps_coordinates: await getGPSCoordinates(),
+                content_hash: generateContentHash(docType, docNumber, clientName, amount)
+            })
+            .select();
+        if (error) { console.warn('Document record store failed:', error); return null; }
+        return data?.[0] || null;
+    } catch (e) {
+        console.warn('Supabase insert failed (possibly offline):', e);
+        return null;
+    }
+}
+
+async function getGPSCoordinates() {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(`${pos.coords.latitude},${pos.coords.longitude}`),
+            () => resolve(null),
+            { timeout: 3000, maximumAge: 60000 }
+        );
+    });
+}
+
+function generateContentHash(docType, docNumber, clientName, amount) {
+    const input = `${docType}|${docNumber}|${clientName}|${amount}|PINTOREX`;
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36).toUpperCase().padStart(8, '0');
+}
+
+// ============================================================================
 // LOGO DATA (Base64 encoded for PDF embedding)
 // ============================================================================
 
@@ -94,6 +156,72 @@ const SessionManager = {
             session.expiresAt = Date.now() + this.SESSION_DURATION;
             sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
         }
+    }
+};
+
+// ============================================================================
+// OFFLINE AUTHENTICATION (PWA Support - Option A: Cached Session)
+// ============================================================================
+
+const OfflineAuth = {
+    TOKEN_KEY: 'pintorex_offline_token',
+
+    /**
+     * Store the offline token received from server after successful login.
+     * Token is stored in localStorage (persists across browser sessions).
+     */
+    storeToken(token) {
+        try {
+            localStorage.setItem(this.TOKEN_KEY, token);
+        } catch (e) {
+            console.warn('Could not store offline token:', e);
+        }
+    },
+
+    /**
+     * Check if a valid (non-expired) offline token exists.
+     * This enables offline access without server verification.
+     */
+    hasValidToken() {
+        try {
+            const token = localStorage.getItem(this.TOKEN_KEY);
+            if (!token) return false;
+
+            const decoded = JSON.parse(atob(token));
+            if (!decoded.exp || !decoded.sig) return false;
+
+            // Check expiry
+            if (Date.now() > decoded.exp) {
+                this.clearToken();
+                return false;
+            }
+            return true;
+        } catch (e) {
+            this.clearToken();
+            return false;
+        }
+    },
+
+    /**
+     * Clear the offline token (on explicit logout).
+     */
+    clearToken() {
+        localStorage.removeItem(this.TOKEN_KEY);
+    },
+
+    /**
+     * Check if we're currently offline.
+     */
+    isOffline() {
+        return !navigator.onLine;
+    },
+
+    /**
+     * Attempt offline authentication.
+     * Returns true if offline + valid token exists.
+     */
+    tryOfflineAuth() {
+        return this.isOffline() && this.hasValidToken();
     }
 };
 
@@ -1456,6 +1584,104 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
 }
 
 // ============================================================================
+// SMART SEAL + QR PLACEMENT ENGINE
+// ============================================================================
+
+function generateDocumentUUID(docType, docNumber) {
+    const input = `${docType}-${docNumber}-${Date.now()}`;
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+        const char = input.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    const hex = Math.abs(hash).toString(16).padStart(8, '0');
+    const rand = Math.random().toString(16).substring(2, 10);
+    return `${hex}-${rand.substring(0, 4)}-${rand.substring(4, 8)}-${docNumber.replace(/[^A-Za-z0-9]/g, '')}`.toLowerCase();
+}
+
+function drawVerificationQR(doc, x, y, size, sealData) {
+    try {
+        const docId = sealData.documentId || generateDocumentUUID(sealData.docType, sealData.docNumber);
+        const verificationUrl = `https://pintorexconstruction.onrender.com/verify/${docId}`;
+        const qr = qrcode(0, 'M');
+        qr.addData(verificationUrl);
+        qr.make();
+        const qrDataUrl = qr.createDataURL(4, 0);
+        doc.addImage(qrDataUrl, 'GIF', x, y, size, size);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(4);
+        doc.setTextColor(...Colors.textMuted);
+        doc.text("Scan to verify", x + size / 2, y + size + 2.5, { align: "center" });
+    } catch (e) {
+        console.warn('QR code generation failed:', e);
+    }
+}
+
+function placeSealAndQR(doc, contentEndY, sealData, options) {
+    options = options || {};
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 15;
+    const sealRadius = 18;
+    const footerTopY = pageHeight - 19;
+    const maxAllowedBottom = footerTopY - 3;
+    const qrSize = 15;
+
+    // Explicit watermark mode (e.g., Invoice)
+    if (sealData.watermark === true) {
+        drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, pageHeight / 2 + 40, sealRadius, sealData);
+        const qrY = contentEndY + 3;
+        const qrX = pageWidth - margin - qrSize;
+        if (qrY + qrSize + 4 < maxAllowedBottom) {
+            drawVerificationQR(doc, qrX, qrY, qrSize, sealData);
+        }
+        return;
+    }
+
+    // Calculate seal center position
+    var sealCenterX, sealCenterY;
+    sealCenterX = pageWidth - margin - sealRadius - 2;
+
+    if (options.placement === 'centered-below') {
+        sealCenterX = pageWidth / 2;
+        sealCenterY = contentEndY + sealRadius + 5;
+    } else if (options.signatureBlockY !== undefined) {
+        sealCenterY = options.signatureBlockY + sealRadius;
+    } else {
+        sealCenterY = contentEndY + sealRadius + 5;
+    }
+
+    // Safety: would seal extend below footer?
+    var sealBottomY = sealCenterY + sealRadius;
+    if (sealBottomY > maxAllowedBottom) {
+        // Fall back to watermark mode
+        drawCompanySeal(doc, pageWidth / 2, pageHeight / 2, sealRadius, {
+            ...sealData,
+            watermark: true
+        });
+        var qrFallbackY = Math.min(contentEndY + 3, maxAllowedBottom - qrSize - 4);
+        drawVerificationQR(doc, pageWidth - margin - qrSize, qrFallbackY, qrSize, sealData);
+        return;
+    }
+
+    // Draw seal at calculated position
+    drawCompanySeal(doc, sealCenterX, sealCenterY, sealRadius, sealData);
+
+    // Draw QR code below the seal
+    var qrX = sealCenterX - qrSize / 2;
+    var qrY = sealCenterY + sealRadius + 2;
+
+    if (qrY + qrSize + 4 > maxAllowedBottom) {
+        // No room below — place QR to the left of the seal
+        qrX = sealCenterX - sealRadius - qrSize - 3;
+        qrY = sealCenterY - qrSize / 2;
+    }
+
+    drawVerificationQR(doc, qrX, qrY, qrSize, sealData);
+}
+
+// ============================================================================
 // BUTTON LOADING STATE
 // ============================================================================
 
@@ -1586,7 +1812,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     settingsButton.addEventListener('click', () => ModalUI.showSettings());
     document.body.appendChild(settingsButton);
 
-    // Check for existing session
+    // Check for existing session (supports both online session and offline cached token)
     const loginSection = document.getElementById('loginSection');
     const quotationSection = document.getElementById('quotationSection');
 
@@ -1595,6 +1821,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         quotationSection.classList.remove('hidden');
         settingsButton.style.display = 'flex';
         restoreFormData();
+    } else if (OfflineAuth.hasValidToken()) {
+        // Valid offline token exists — auto-login (works both online and offline)
+        SessionManager.createSession();
+        loginSection.classList.add('hidden');
+        quotationSection.classList.remove('hidden');
+        settingsButton.style.display = 'flex';
+        restoreFormData();
+        if (!navigator.onLine) {
+            Toast.info('Working offline with cached credentials');
+        }
     } else {
         settingsButton.style.display = 'none';
     }
@@ -1638,6 +1874,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 if (response.ok && data.success) {
                     SessionManager.createSession();
+                    // Store offline token for PWA offline access
+                    if (data.offlineToken) {
+                        OfflineAuth.storeToken(data.offlineToken);
+                    }
                     loginSection.classList.add('hidden');
                     quotationSection.classList.remove('hidden');
                     settingsButton.style.display = 'flex';
@@ -1652,9 +1892,24 @@ document.addEventListener('DOMContentLoaded', async function() {
                     passwordInput.focus();
                 }
             } catch (error) {
-                if (loginError) {
-                    loginError.textContent = 'Network error. Please try again.';
-                    loginError.classList.remove('hidden');
+                // If offline, try offline authentication with cached token
+                if (OfflineAuth.tryOfflineAuth()) {
+                    SessionManager.createSession();
+                    loginSection.classList.add('hidden');
+                    quotationSection.classList.remove('hidden');
+                    settingsButton.style.display = 'flex';
+                    Toast.info('Logged in offline (cached session)');
+                    restoreFormData();
+                } else if (!navigator.onLine) {
+                    if (loginError) {
+                        loginError.textContent = 'You are offline. Please log in online at least once to enable offline access.';
+                        loginError.classList.remove('hidden');
+                    }
+                } else {
+                    if (loginError) {
+                        loginError.textContent = 'Network error. Please try again.';
+                        loginError.classList.remove('hidden');
+                    }
                 }
             } finally {
                 if (loginBtn) loginBtn.disabled = false;
@@ -2153,15 +2408,19 @@ async function generateProfessionalQuotation(data) {
     doc.setFontSize(14);
     doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const qtDocId = generateDocumentUUID('QUOTATION', quotationNumber);
+    placeSealAndQR(doc, yPos + 18, {
         docType: 'QUOTATION',
         docNumber: quotationNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: qtDocId
+    }, {
+        placement: 'right-side',
+        signatureBlockY: yPos
     });
+    const qtAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
+    storeDocumentRecord(qtDocId, 'QUOTATION', quotationNumber, data.clientName, qtAmount).catch(() => {});
 
     doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
 }
@@ -2207,7 +2466,7 @@ async function generateAcceptanceLetter(data) {
     doc.setFontSize(8);
     doc.text("Official Contract Acceptance", margin + 5, yPos + 14);
 
-    yPos += 26;
+    yPos += 18;
 
     // Recipient
     doc.setFont("helvetica", "normal");
@@ -2262,15 +2521,16 @@ async function generateAcceptanceLetter(data) {
         detailY += 5;
     });
 
-    yPos += 42;
+    yPos += 35;
 
     // Closing
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text("Yours faithfully,", margin, yPos);
-    yPos += 18;
+    yPos += 12;
 
     // Signature area
+    const signatureStartY = yPos;
     doc.setFillColor(...Colors.subtle);
     doc.roundedRect(margin, yPos, 80, 32, 3, 3, 'F');
 
@@ -2293,15 +2553,18 @@ async function generateAcceptanceLetter(data) {
     doc.setTextColor(...Colors.textMuted);
     doc.text("Tel: +254 769 157174", margin + 5, sigY);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const accDocId = generateDocumentUUID('ACCEPTANCE', documentNumber);
+    placeSealAndQR(doc, yPos + 32, {
         docType: 'ACCEPTANCE',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: accDocId
+    }, {
+        placement: 'right-of-signature',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(accDocId, 'ACCEPTANCE', documentNumber, data.clientName, totals.total).catch(() => {});
 
     doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
 }
@@ -2424,6 +2687,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     yPos += 47;
 
     // Signature
+    const signatureStartY = yPos;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text("Prepared By:", margin, yPos);
@@ -2440,15 +2704,18 @@ async function generatePaymentRequest(data, paymentDetails) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const prDocId = generateDocumentUUID('PAYMENT', documentNumber);
+    placeSealAndQR(doc, yPos, {
         docType: 'PAYMENT',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: prDocId
+    }, {
+        placement: 'right-of-signature',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(prDocId, 'PAYMENT', documentNumber, data.clientName, totals.total).catch(() => {});
 
     doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
@@ -2627,17 +2894,19 @@ async function generateInvoice(data, invoiceDetails) {
     const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
 
-    // Professional seal with verification
-    // Invoice is content-dense — use watermark mode so seal doesn't obstruct amounts
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification (watermark mode for content-dense invoice)
+    const invDocId = generateDocumentUUID('INVOICE', documentNumber);
+    placeSealAndQR(doc, yPos, {
         docType: 'INVOICE',
         docNumber: documentNumber,
         date: new Date().toLocaleDateString('en-GB'),
-        watermark: true
+        watermark: true,
+        documentId: invDocId
+    }, {
+        placement: 'right-side'
     });
+    const invAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
+    storeDocumentRecord(invDocId, 'INVOICE', documentNumber, data.clientName, invAmount).catch(() => {});
 
     doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
 }
@@ -2725,9 +2994,10 @@ async function generateDeliveryNote(data) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 15;
+    yPos = doc.lastAutoTable.finalY + 10;
 
     // Signature section - two columns
+    const signatureStartY = yPos;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
@@ -2753,15 +3023,18 @@ async function generateDeliveryNote(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const dnDocId = generateDocumentUUID('DELIVERY', documentNumber);
+    placeSealAndQR(doc, yPos + 5, {
         docType: 'DELIVERY',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: dnDocId
+    }, {
+        placement: 'right-side',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(dnDocId, 'DELIVERY', documentNumber, data.clientName, null).catch(() => {});
 
     doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
@@ -2926,15 +3199,17 @@ async function generateContractAgreement(data) {
     doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
     doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const ctDocId = generateDocumentUUID('CONTRACT', documentNumber);
+    placeSealAndQR(doc, yPos + 35, {
         docType: 'CONTRACT',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: ctDocId
+    }, {
+        placement: 'centered-below'
     });
+    storeDocumentRecord(ctDocId, 'CONTRACT', documentNumber, data.clientName, totals.total).catch(() => {});
 
     doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
 }
@@ -3005,12 +3280,13 @@ async function generateRecommendationLetter(data) {
         }
     });
 
-    yPos += 15;
+    yPos += 10;
 
     // Signature
     doc.text("Yours faithfully,", margin, yPos);
-    yPos += 15;
+    yPos += 10;
 
+    const signatureStartY = yPos;
     doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, margin + 55, yPos);
@@ -3023,15 +3299,18 @@ async function generateRecommendationLetter(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const recDocId = generateDocumentUUID('RECOMMENDATION', documentNumber);
+    placeSealAndQR(doc, yPos, {
         docType: 'RECOMMENDATION',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: recDocId
+    }, {
+        placement: 'right-of-signature',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(recDocId, 'RECOMMENDATION', documentNumber, data.clientName, null).catch(() => {});
 
     doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
 }
@@ -3124,9 +3403,10 @@ async function generateReceipt(data, receiptDetails) {
         doc.text(`Reference: ${receiptDetails.referenceNumber}`, margin + 80, yPos + 16);
     }
 
-    yPos += 35;
+    yPos += 28;
 
     // Signature
+    const signatureStartY = yPos;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.text("Received By:", margin, yPos);
@@ -3147,15 +3427,18 @@ async function generateReceipt(data, receiptDetails) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const rcptDocId = generateDocumentUUID('RECEIPT', documentNumber);
+    placeSealAndQR(doc, yPos, {
         docType: 'RECEIPT',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: rcptDocId
+    }, {
+        placement: 'right-of-signature',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(rcptDocId, 'RECEIPT', documentNumber, data.clientName, parseFloat(receiptDetails.amount)).catch(() => {});
 
     doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
 }
@@ -3270,9 +3553,10 @@ async function generateLPO(data, lpoDetails) {
     doc.text("TOTAL:", margin + 5, yPos + 9.5);
     doc.text(`KES ${numberWithCommas(materialsTotal)}`, pageWidth - margin - 5, yPos + 9.5, { align: "right" });
 
-    yPos += 18;
+    yPos += 14;
 
     // Signature section
+    const signatureStartY = yPos;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
@@ -3294,15 +3578,18 @@ async function generateLPO(data, lpoDetails) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
-    // Professional seal with verification
-    const sealRadius = 18;
-    const sealPageH = doc.internal.pageSize.height;
-    const sealCenterY = sealPageH - 19 - sealRadius - 2;
-    drawCompanySeal(doc, pageWidth - margin - sealRadius - 2, sealCenterY, sealRadius, {
+    // Professional seal with QR verification
+    const lpoDocId = generateDocumentUUID('LPO', documentNumber);
+    placeSealAndQR(doc, yPos, {
         docType: 'LPO',
         docNumber: documentNumber,
-        date: new Date().toLocaleDateString('en-GB')
+        date: new Date().toLocaleDateString('en-GB'),
+        documentId: lpoDocId
+    }, {
+        placement: 'right-of-signature',
+        signatureBlockY: signatureStartY
     });
+    storeDocumentRecord(lpoDocId, 'LPO', documentNumber, data.clientName, materialsTotal).catch(() => {});
 
     doc.save(`Pintorex-LPO-${documentNumber}.pdf`);
 }
