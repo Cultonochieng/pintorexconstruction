@@ -384,32 +384,19 @@ if (quoteForm) {
         submitText.classList.add('hidden');
         submitSpinner.classList.remove('hidden');
 
-        const formData = {
-            name: document.getElementById('name').value,
-            email: document.getElementById('email').value,
-            projectType: document.getElementById('project-type').value,
+        const templateParams = {
+            from_name: document.getElementById('name').value,
+            from_email: document.getElementById('email').value,
+            project_type: document.getElementById('project-type').value,
             message: document.getElementById('message').value
         };
 
         try {
-            const response = await fetch('/api/contact', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                Toast.success(data.message || 'Thank you! We will contact you soon.');
-                quoteForm.reset();
-            } else {
-                Toast.error(data.error || 'Failed to send. Please try again.');
-            }
+            await emailjs.send('service_gk27l3l', 'template_4emuh13', templateParams);
+            Toast.success('Thank you! Your quote request has been sent. We will contact you soon.');
+            quoteForm.reset();
         } catch (error) {
-            Toast.error('Network error. Please check your connection.');
+            Toast.error('Failed to send. Please try again or call us directly.');
         } finally {
             // Reset button state
             submitBtn.disabled = false;
