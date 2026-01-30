@@ -6,7 +6,7 @@
 
     <!-- Homepage -->
     <url>
-        <loc>https://www.pintorexconstruction.com/</loc>
+        <loc>https://pintorexconstruction.onrender.com/</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>weekly</changefreq>
         <priority>1.0</priority>
@@ -14,7 +14,7 @@
 
     <!-- Services Section (anchor) -->
     <url>
-        <loc>https://www.pintorexconstruction.com/#services</loc>
+        <loc>https://pintorexconstruction.onrender.com/#services</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.9</priority>
@@ -22,7 +22,7 @@
 
     <!-- Projects Section (anchor) -->
     <url>
-        <loc>https://www.pintorexconstruction.com/#projects</loc>
+        <loc>https://pintorexconstruction.onrender.com/#projects</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.9</priority>
@@ -30,7 +30,7 @@
 
     <!-- Testimonials Section (anchor) -->
     <url>
-        <loc>https://www.pintorexconstruction.com/#testimonials</loc>
+        <loc>https://pintorexconstruction.onrender.com/#testimonials</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.7</priority>
@@ -38,7 +38,7 @@
 
     <!-- Contact Section (anchor) -->
     <url>
-        <loc>https://www.pintorexconstruction.com/#contact</loc>
+        <loc>https://pintorexconstruction.onrender.com/#contact</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
@@ -46,7 +46,7 @@
 
     <!-- Quote Section (anchor) -->
     <url>
-        <loc>https://www.pintorexconstruction.com/#quote</loc>
+        <loc>https://pintorexconstruction.onrender.com/#quote</loc>
         <lastmod>2026-01-24</lastmod>
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>

@@ -1,5 +1,5 @@
 # Robots.txt for Pintorex Construction Limited
-# https://www.pintorexconstruction.com
+# https://pintorexconstruction.onrender.com
 
 User-agent: *
 Allow: /
@@ -7,7 +7,7 @@ Disallow: /api/
 Disallow: /quotation-generator.html
 
 # Sitemap location
-Sitemap: https://www.pintorexconstruction.com/sitemap.xml
+Sitemap: https://pintorexconstruction.onrender.com/sitemap.xml
 
 # Crawl delay (optional, for server performance)
 Crawl-delay: 1

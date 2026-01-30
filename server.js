@@ -51,7 +51,7 @@ app.use(helmet({
 // CORS configuration
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? ['https://pintorexconstruction.onrender.com', 'https://www.pintorexconstruction.com']
+        ? ['https://pintorexconstruction.onrender.com', 'https://pintorexconstruction.onrender.com']
         : true,
     credentials: true
 }));
