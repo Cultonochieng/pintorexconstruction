@@ -1245,20 +1245,148 @@ function clearValidationErrors() {
 }
 
 // ============================================================================
-// SMART SPACING SYSTEM FOR PDFs
+// SMART SPACING ENGINE FOR PDFs
+// Centralized layout system that intelligently distributes content across pages.
+// Measures all content upfront, computes optimal gaps and page breaks, then
+// renders with adaptive spacing. Ensures no excessive whitespace, no content
+// collisions, and professional appearance across all document types.
 // ============================================================================
 
 const SmartSpacing = {
-    checkAndAddPage(doc, currentY, requiredHeight, addHeaderFooter) {
-        const pageHeight = doc.internal.pageSize.height;
-        const footerHeight = 20;
-        const bottomMargin = 15;
-        const availableSpace = pageHeight - currentY - footerHeight - bottomMargin;
+    HEADER_END_Y: 45,
+    FOOTER_RESERVE: 35,
 
-        if (availableSpace < requiredHeight) {
+    getContentBounds(doc) {
+        const pageHeight = doc.internal.pageSize.height;
+        const endY = pageHeight - this.FOOTER_RESERVE;
+        return { startY: this.HEADER_END_Y, endY, height: endY - this.HEADER_END_Y };
+    },
+
+    estimateTableHeight(rowCount, options = {}) {
+        const cellPadding = options.cellPadding || 4;
+        const fontSize = options.fontSize || 9;
+        const headerH = (cellPadding * 2) + (fontSize * 0.35) + 6;
+        const rowH = (cellPadding * 2) + (fontSize * 0.35) + 2;
+        return headerH + (rowCount * rowH);
+    },
+
+    /**
+     * Core layout engine. Computes optimal gaps and page breaks for blocks.
+     * @param {jsPDF} doc
+     * @param {number} currentY - Where content starts
+     * @param {Array} blocks - [{height, minGap, preferredGap, keepWithNext}]
+     * @returns {{gaps: number[], pageBreaks: number[]}}
+     */
+    distribute(doc, currentY, blocks) {
+        if (!blocks || blocks.length === 0) return { gaps: [], pageBreaks: [] };
+        const bounds = this.getContentBounds(doc);
+        const available = bounds.endY - currentY;
+        const norm = blocks.map(b => ({
+            height: b.height || 0,
+            minGap: b.minGap != null ? b.minGap : 0,
+            preferredGap: b.preferredGap != null ? b.preferredGap : (b.minGap || 0),
+            keepWithNext: !!b.keepWithNext
+        }));
+        const totalMin = norm.reduce((sum, b) => sum + b.height + b.minGap, 0);
+        if (totalMin <= available) {
+            return this._expandGaps(norm, available);
+        }
+        return this._multiPage(norm, available, bounds.height);
+    },
+
+    _expandGaps(blocks, available) {
+        const totalContent = blocks.reduce((sum, b) => sum + b.height, 0);
+        const gapBudget = available - totalContent;
+        if (gapBudget <= 0) return { gaps: blocks.map(b => b.minGap), pageBreaks: [] };
+
+        const totalMin = blocks.reduce((sum, b) => sum + b.minGap, 0);
+        const totalPref = blocks.reduce((sum, b) => sum + b.preferredGap, 0);
+        const expandRange = totalPref - totalMin;
+        let gaps;
+
+        if (expandRange > 0 && gapBudget > totalMin) {
+            const extra = gapBudget - totalMin;
+            gaps = blocks.map(b => {
+                const room = b.preferredGap - b.minGap;
+                const bonus = (room / expandRange) * extra;
+                return Math.min(b.minGap + bonus, b.preferredGap * 2.5);
+            });
+            const usedTotal = gaps.reduce((s, g) => s + g, 0) + totalContent;
+            const leftover = available - usedTotal;
+            if (leftover > 2) {
+                const canExpand = gaps.map((g, i) => g < blocks[i].preferredGap * 2.5 ? 1 : 0);
+                const count = canExpand.reduce((s, v) => s + v, 0) || gaps.length;
+                const perGap = leftover / count;
+                gaps = gaps.map((g, i) => (canExpand[i] || count === gaps.length) ? g + perGap : g);
+            }
+        } else if (gapBudget >= totalMin) {
+            gaps = blocks.map(b => totalMin > 0 ? (b.minGap / totalMin) * gapBudget : gapBudget / blocks.length);
+        } else {
+            const scale = totalMin > 0 ? gapBudget / totalMin : 0;
+            gaps = blocks.map(b => b.minGap * scale);
+        }
+        return { gaps, pageBreaks: [] };
+    },
+
+    _multiPage(blocks, firstAvail, fullHeight) {
+        const groups = [];
+        let cur = [];
+        for (let i = 0; i < blocks.length; i++) {
+            cur.push({ ...blocks[i], idx: i });
+            if (!blocks[i].keepWithNext || i === blocks.length - 1) {
+                groups.push(cur); cur = [];
+            }
+        }
+        const gHeights = groups.map(g => g.reduce((s, b) => s + b.height + b.minGap, 0));
+        const pages = [];
+        let avail = firstAvail;
+        let page = { gis: [], used: 0, avail };
+        for (let gi = 0; gi < groups.length; gi++) {
+            if (page.used + gHeights[gi] <= avail || page.gis.length === 0) {
+                page.gis.push(gi);
+                page.used += gHeights[gi];
+            } else {
+                pages.push({ ...page });
+                avail = fullHeight;
+                page = { gis: [gi], used: gHeights[gi], avail };
+            }
+        }
+        if (page.gis.length > 0) pages.push({ ...page });
+
+        const allGaps = new Array(blocks.length).fill(0);
+        const pageBreaks = [];
+        for (let p = 0; p < pages.length; p++) {
+            const pg = pages[p];
+            const flat = pg.gis.flatMap(gi => groups[gi]);
+            const r = this._expandGaps(flat, pg.avail);
+            flat.forEach((b, i) => { allGaps[b.idx] = r.gaps[i]; });
+            if (p < pages.length - 1) {
+                pageBreaks.push(flat[flat.length - 1].idx);
+            }
+        }
+        return { gaps: allGaps, pageBreaks };
+    },
+
+    /**
+     * Advance yPos after rendering a section. Handles page breaks.
+     * @returns {number} New yPos
+     */
+    advance(yPos, contentHeight, layout, blockIndex, doc, onNewPage) {
+        yPos += contentHeight;
+        if (layout.pageBreaks.includes(blockIndex)) {
             doc.addPage();
-            if (addHeaderFooter) addHeaderFooter();
-            return 45; // Return new yPos after header
+            if (onNewPage) onNewPage();
+            return this.HEADER_END_Y;
+        }
+        return yPos + layout.gaps[blockIndex];
+    },
+
+    checkAndAddPage(doc, currentY, requiredHeight, onNewPage) {
+        const bounds = this.getContentBounds(doc);
+        if (currentY + requiredHeight > bounds.endY) {
+            doc.addPage();
+            if (onNewPage) onNewPage();
+            return bounds.startY;
         }
         return currentY;
     }
@@ -2109,6 +2237,8 @@ async function generateProfessionalQuotation(data) {
         addProfessionalFooter(doc, pageNum);
     }
 
+    const onNewPage = () => { pageNum++; addHeader(); addFooter(); };
+
     let yPos = 45;
 
     addHeader();
@@ -2174,12 +2304,8 @@ async function generateProfessionalQuotation(data) {
         yPos += descHeight + 8;
     }
 
-    // Materials section
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 20, () => {
-        pageNum++;
-        addHeader();
-        addFooter();
-    });
+    // Materials section - page break check
+    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 20, onNewPage);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
@@ -2231,29 +2357,12 @@ async function generateProfessionalQuotation(data) {
         }
     });
 
-    yPos = doc.lastAutoTable.finalY + 12;
+    yPos = doc.lastAutoTable.finalY;
 
-    // Financial summary
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 85, () => {
-        pageNum++;
-        addHeader();
-        addFooter();
-    });
-
+    // === POST-TABLE: SmartSpacing layout ===
     const totals = calculateTotals(data);
 
-    // Summary header
-    doc.setFillColor(...Colors.secondary);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
-
-    doc.setTextColor(...Colors.white);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("FINANCIAL SUMMARY", margin + 5, yPos + 9.5);
-
-    yPos += 16;
-
-    // Summary content - build dynamic items list
+    // Build summary items to calculate dynamic height
     const summaryItems = [
         ["Materials Total:", `KES ${numberWithCommas(totals.materialsTotal)}`],
         ["Labor Cost:", `KES ${numberWithCommas(totals.labor)}`],
@@ -2261,11 +2370,7 @@ async function generateProfessionalQuotation(data) {
         [`VAT (${totals.vatPercentage}%):`, `KES ${numberWithCommas(totals.vat)}`],
         [`Contingency (${totals.contingencyPercentage}%):`, `KES ${numberWithCommas(totals.contingency)}`]
     ];
-
-    // Add gross total
     summaryItems.push(["Gross Total:", `KES ${numberWithCommas(totals.grossTotal)}`]);
-
-    // Add deductions if applicable
     if (totals.withholdingTaxPercentage > 0) {
         summaryItems.push([`Less: WHT (${totals.withholdingTaxPercentage}%):`, `(KES ${numberWithCommas(totals.withholdingTax)})`]);
     }
@@ -2276,9 +2381,34 @@ async function generateProfessionalQuotation(data) {
         summaryItems.push([`Less: Retention (${totals.retentionPercentage}%):`, `(KES ${numberWithCommas(totals.retention)})`]);
     }
 
-    // Calculate dynamic box height
     const boxHeight = 10 + (summaryItems.length * 9) + 5;
+    const financialSummaryH = 16 + boxHeight;
 
+    // SmartSpacing: compute post-table layout
+    const postBlocks = [
+        { height: 0, minGap: 8, preferredGap: 15 },
+        { height: financialSummaryH, minGap: 2, preferredGap: 5, keepWithNext: true },
+        { height: 18, minGap: 3, preferredGap: 10, keepWithNext: true },
+        { height: 38, minGap: 0, preferredGap: 0 }
+    ];
+    const postLayout = SmartSpacing.distribute(doc, yPos, postBlocks);
+    let pi = 0;
+
+    // Gap: table → financial summary
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
+
+    // Financial summary header
+    doc.setFillColor(...Colors.secondary);
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
+
+    doc.setTextColor(...Colors.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("FINANCIAL SUMMARY", margin + 5, yPos + 9.5);
+
+    yPos += 16;
+
+    // Summary items box
     doc.setFillColor(...Colors.subtle);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), boxHeight, 3, 3, 'F');
 
@@ -2294,9 +2424,12 @@ async function generateProfessionalQuotation(data) {
         summaryY += 9;
     });
 
-    yPos += boxHeight + 3;
+    yPos += boxHeight;
 
-    // Total amount (Net Payable if there are deductions)
+    // Gap: financial summary → NET PAYABLE
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
+
+    // NET PAYABLE bar
     doc.setFillColor(...Colors.primary);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
     doc.setTextColor(...Colors.white);
@@ -2308,16 +2441,19 @@ async function generateProfessionalQuotation(data) {
     doc.setFontSize(14);
     doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 8, yPos + 12, { align: "right" });
 
+    // Gap: NET PAYABLE → seal
+    yPos = SmartSpacing.advance(yPos, 18, postLayout, pi++, doc, onNewPage);
+
     // Professional seal with QR verification
     const qtDocId = generateDocumentUUID('QUOTATION', quotationNumber);
-    placeSealAndQR(doc, yPos + 20, {
+    placeSealAndQR(doc, yPos, {
         docType: 'QUOTATION',
         docNumber: quotationNumber,
         date: new Date().toLocaleDateString('en-GB'),
         documentId: qtDocId
     }, {
         placement: 'right-side',
-        signatureBlockY: yPos + 20
+        signatureBlockY: yPos
     });
     const qtAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(qtDocId, 'QUOTATION', quotationNumber, data.clientName, qtAmount).catch(() => {});
@@ -2333,12 +2469,33 @@ async function generateAcceptanceLetter(data) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('acceptance');
+    const onNewPage = () => { addProfessionalHeader(doc, 'ACCEPTANCE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'ACCEPTANCE');
     addProfessionalFooter(doc);
 
     let yPos = 48;
     const totals = calculateTotals(data);
+
+    // Pre-calculate body text height for SmartSpacing
+    const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
+    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
+    const bodyH = bodyLines.length * 5;
+
+    // SmartSpacing: define all sections
+    const blocks = [
+        { height: 8, minGap: 6, preferredGap: 12 },
+        { height: 18, minGap: 3, preferredGap: 8 },
+        { height: 5, minGap: 4, preferredGap: 8 },
+        { height: 10, minGap: 5, preferredGap: 12 },
+        { height: bodyH, minGap: 4, preferredGap: 10 },
+        { height: 32, minGap: 4, preferredGap: 10 },
+        { height: 5, minGap: 4, preferredGap: 8 },
+        { height: 32, minGap: 0, preferredGap: 0, keepWithNext: true },
+        { height: 38, minGap: 0, preferredGap: 0 }
+    ];
+    const layout = SmartSpacing.distribute(doc, yPos, blocks);
+    let si = 0;
 
     // Title
     doc.setTextColor(...Colors.secondary);
@@ -2350,7 +2507,7 @@ async function generateAcceptanceLetter(data) {
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 50, yPos + 3, pageWidth / 2 + 50, yPos + 3);
 
-    yPos += 15;
+    yPos = SmartSpacing.advance(yPos, 8, layout, si++, doc, onNewPage);
 
     // Reference info
     doc.setFillColor(...Colors.subtle);
@@ -2366,14 +2523,14 @@ async function generateAcceptanceLetter(data) {
     doc.setFontSize(8);
     doc.text("Official Contract Acceptance", margin + 5, yPos + 14);
 
-    yPos += 18;
+    yPos = SmartSpacing.advance(yPos, 18, layout, si++, doc, onNewPage);
 
     // Recipient
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
     doc.setTextColor(...Colors.text);
     doc.text(data.clientName, margin, yPos);
-    yPos += 12;
+    yPos = SmartSpacing.advance(yPos, 5, layout, si++, doc, onNewPage);
 
     // Subject
     doc.setFillColor(...Colors.primary);
@@ -2383,18 +2540,14 @@ async function generateAcceptanceLetter(data) {
     doc.setTextColor(...Colors.white);
     doc.text(`RE: ${data.projectType.toUpperCase()}`, margin + 5, yPos + 7);
 
-    yPos += 18;
+    yPos = SmartSpacing.advance(yPos, 10, layout, si++, doc, onNewPage);
 
     // Main body
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.text);
-
-    const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
-
-    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
     doc.text(bodyLines, margin, yPos);
-    yPos += (bodyLines.length * 5) + 8;
+    yPos = SmartSpacing.advance(yPos, bodyH, layout, si++, doc, onNewPage);
 
     // Project details
     doc.setFillColor(...Colors.subtle);
@@ -2421,13 +2574,13 @@ async function generateAcceptanceLetter(data) {
         detailY += 5;
     });
 
-    yPos += 35;
+    yPos = SmartSpacing.advance(yPos, 32, layout, si++, doc, onNewPage);
 
     // Closing
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text("Yours faithfully,", margin, yPos);
-    yPos += 12;
+    yPos = SmartSpacing.advance(yPos, 5, layout, si++, doc, onNewPage);
 
     // Signature area
     const signatureStartY = yPos;
@@ -2453,9 +2606,11 @@ async function generateAcceptanceLetter(data) {
     doc.setTextColor(...Colors.textMuted);
     doc.text("Tel: +254 769 157174", margin + 5, sigY);
 
+    yPos = SmartSpacing.advance(yPos, 32, layout, si++, doc, onNewPage);
+
     // Professional seal with QR verification
     const accDocId = generateDocumentUUID('ACCEPTANCE', documentNumber);
-    placeSealAndQR(doc, yPos + 32, {
+    placeSealAndQR(doc, yPos, {
         docType: 'ACCEPTANCE',
         docNumber: documentNumber,
         date: new Date().toLocaleDateString('en-GB'),
@@ -2477,6 +2632,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('payment');
+    const onNewPage = () => { addProfessionalHeader(doc, 'PAYMENT REQUEST'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PAYMENT REQUEST');
     addProfessionalFooter(doc);
@@ -2543,7 +2699,21 @@ async function generatePaymentRequest(data, paymentDetails) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 8;
+    yPos = doc.lastAutoTable.finalY;
+
+    // === POST-TABLE: SmartSpacing layout ===
+    const postBlocks = [
+        { height: 0, minGap: 8, preferredGap: 15 },           // spacer: table -> AMOUNT DUE
+        { height: 16, minGap: 3, preferredGap: 8 },            // AMOUNT DUE bar
+        { height: 45, minGap: 3, preferredGap: 8 },            // bank details box
+        { height: 20, minGap: 0, preferredGap: 0, keepWithNext: true }, // signature
+        { height: 38, minGap: 0, preferredGap: 0 }             // seal
+    ];
+    const postLayout = SmartSpacing.distribute(doc, yPos, postBlocks);
+    let pi = 0;
+
+    // Gap: table -> AMOUNT DUE
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
 
     // Total
     doc.setFillColor(...Colors.primary);
@@ -2555,7 +2725,8 @@ async function generatePaymentRequest(data, paymentDetails) {
     doc.text("AMOUNT DUE:", margin + 5, yPos + 11);
     doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
 
-    yPos += 24;
+    // Gap: AMOUNT DUE -> bank details
+    yPos = SmartSpacing.advance(yPos, 16, postLayout, pi++, doc, onNewPage);
 
     // Bank details
     doc.setFillColor(...Colors.subtle);
@@ -2584,7 +2755,8 @@ async function generatePaymentRequest(data, paymentDetails) {
         payY += 5;
     });
 
-    yPos += 47;
+    // Gap: bank details -> signature
+    yPos = SmartSpacing.advance(yPos, 45, postLayout, pi++, doc, onNewPage);
 
     // Signature
     const signatureStartY = yPos;
@@ -2603,6 +2775,9 @@ async function generatePaymentRequest(data, paymentDetails) {
     yPos += 4;
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
+
+    // Gap: signature -> seal (keepWithNext keeps them together)
+    yPos = SmartSpacing.advance(signatureStartY, 20, postLayout, pi++, doc, onNewPage);
 
     // Professional seal with QR verification
     const prDocId = generateDocumentUUID('PAYMENT', documentNumber);
@@ -2628,6 +2803,7 @@ async function generateInvoice(data, invoiceDetails) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('invoice');
+    const onNewPage = () => { addProfessionalHeader(doc, 'INVOICE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'INVOICE');
     addProfessionalFooter(doc);
@@ -2734,9 +2910,10 @@ async function generateInvoice(data, invoiceDetails) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 8;
+    yPos = doc.lastAutoTable.finalY;
 
-    // Summary - build dynamic items
+    // === POST-TABLE: SmartSpacing layout ===
+    // Build summary items to calculate dynamic height
     const summaryItems = [
         ["Subtotal:", `KES ${numberWithCommas(totals.subtotal)}`],
         [`VAT (${totals.vatPercentage}%):`, `KES ${numberWithCommas(totals.vat)}`],
@@ -2756,6 +2933,27 @@ async function generateInvoice(data, invoiceDetails) {
     }
 
     const boxHeight = 8 + (summaryItems.length * 8) + 5;
+
+    // Pre-calculate disclaimer height
+    const disclaimer = "This invoice is issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
+    const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
+    const disclaimerH = disclaimerLines.length * 4;
+
+    // SmartSpacing: compute post-table layout
+    const postBlocks = [
+        { height: 0, minGap: 8, preferredGap: 15 },               // spacer: table -> summary box
+        { height: boxHeight, minGap: 2, preferredGap: 5 },         // summary box
+        { height: 16, minGap: 2, preferredGap: 5 },                // total bar
+        { height: disclaimerH, minGap: 2, preferredGap: 5 },       // disclaimer
+        { height: 38, minGap: 0, preferredGap: 0 }                 // seal (watermark)
+    ];
+    const postLayout = SmartSpacing.distribute(doc, yPos, postBlocks);
+    let pi = 0;
+
+    // Gap: table -> summary box
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
+
+    // Summary box
     doc.setFillColor(...Colors.subtle);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), boxHeight, 3, 3, 'F');
 
@@ -2770,9 +2968,10 @@ async function generateInvoice(data, invoiceDetails) {
         summaryY += 8;
     });
 
-    yPos += boxHeight + 3;
+    // Gap: summary box -> total bar
+    yPos = SmartSpacing.advance(yPos, boxHeight, postLayout, pi++, doc, onNewPage);
 
-    // Total
+    // Total bar
     doc.setFillColor(...Colors.primary);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 16, 3, 3, 'F');
 
@@ -2784,15 +2983,17 @@ async function generateInvoice(data, invoiceDetails) {
     doc.text(totalLabel, margin + 5, yPos + 11);
     doc.text(`KES ${numberWithCommas(totalAmount)}`, pageWidth - margin - 5, yPos + 11, { align: "right" });
 
-    yPos += 22;
+    // Gap: total bar -> disclaimer
+    yPos = SmartSpacing.advance(yPos, 16, postLayout, pi++, doc, onNewPage);
 
     // Disclaimer
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(...Colors.textMuted);
-    const disclaimer = "This invoice is issued in accordance with the Value Added Tax Act (Cap 476) and Income Tax Act (Cap 470) of the Laws of Kenya.";
-    const disclaimerLines = doc.splitTextToSize(disclaimer, pageWidth - (2 * margin));
     doc.text(disclaimerLines, margin, yPos);
+
+    // Gap: disclaimer -> seal
+    yPos = SmartSpacing.advance(yPos, disclaimerH, postLayout, pi++, doc, onNewPage);
 
     // Professional seal with QR verification (watermark mode for content-dense invoice)
     const invDocId = generateDocumentUUID('INVOICE', documentNumber);
@@ -2820,6 +3021,7 @@ async function generateDeliveryNote(data) {
 
     const documentNumber = DocumentRegistry.generateNumber('delivery');
     const lastInvoice = DocumentRegistry.getLastDocument('invoice');
+    const onNewPage = () => { addProfessionalHeader(doc, 'DELIVERY NOTE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'DELIVERY NOTE');
     addProfessionalFooter(doc);
@@ -2894,7 +3096,19 @@ async function generateDeliveryNote(data) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 10;
+    yPos = doc.lastAutoTable.finalY;
+
+    // === POST-TABLE: SmartSpacing layout ===
+    const postBlocks = [
+        { height: 0, minGap: 8, preferredGap: 15 },               // spacer: table -> signature
+        { height: 25, minGap: 0, preferredGap: 0, keepWithNext: true }, // signature section
+        { height: 38, minGap: 0, preferredGap: 0 }                 // seal
+    ];
+    const postLayout = SmartSpacing.distribute(doc, yPos, postBlocks);
+    let pi = 0;
+
+    // Gap: table -> signature section
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
 
     // Signature section - two columns
     const signatureStartY = yPos;
@@ -2923,9 +3137,12 @@ async function generateDeliveryNote(data) {
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
 
+    // Gap: signature -> seal (keepWithNext keeps them together)
+    yPos = SmartSpacing.advance(signatureStartY, 25, postLayout, pi++, doc, onNewPage);
+
     // Professional seal with QR verification
     const dnDocId = generateDocumentUUID('DELIVERY', documentNumber);
-    placeSealAndQR(doc, yPos + 5, {
+    placeSealAndQR(doc, yPos, {
         docType: 'DELIVERY',
         docNumber: documentNumber,
         date: new Date().toLocaleDateString('en-GB'),
@@ -2956,12 +3173,30 @@ async function generateContractAgreement(data) {
     }
 
     const documentNumber = DocumentRegistry.generateNumber('contract');
+    const onNewPage = () => { pageNum++; addHeader(); addFooter(); };
 
     addHeader();
     addFooter();
 
     let yPos = 48;
     const totals = calculateTotals(data);
+
+    // Pre-calculate description lines for scope section
+    const descLines = doc.splitTextToSize(`Description: ${data.projectDescription || 'As per agreement'}`, pageWidth - (2 * margin) - 10);
+
+    // SmartSpacing: define all sections
+    const blocks = [
+        { height: 10, minGap: 4, preferredGap: 8 },            // title + contract no
+        { height: 33, minGap: 4, preferredGap: 8 },             // parties section (header + box)
+        { height: 25, minGap: 4, preferredGap: 8 },             // scope section (header + box)
+        { height: 14, minGap: 4, preferredGap: 10 },            // contract value bar
+        { height: 15, minGap: 4, preferredGap: 8 },             // terms section (header + text)
+        { height: 8, minGap: 3, preferredGap: 6 },              // SIGNATURES header
+        { height: 35, minGap: 0, preferredGap: 0, keepWithNext: true }, // signature boxes
+        { height: 38, minGap: 0, preferredGap: 0 }              // seal
+    ];
+    const layout = SmartSpacing.distribute(doc, yPos, blocks);
+    let si = 0;
 
     // Title
     doc.setTextColor(...Colors.secondary);
@@ -2973,59 +3208,56 @@ async function generateContractAgreement(data) {
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 55, yPos + 3, pageWidth / 2 + 55, yPos + 3);
 
-    yPos += 10;
-
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(`Contract No: ${documentNumber}`, pageWidth / 2, yPos, { align: "center" });
+    doc.text(`Contract No: ${documentNumber}`, pageWidth / 2, yPos + 10, { align: "center" });
 
-    yPos += 15;
+    yPos = SmartSpacing.advance(yPos, 10, layout, si++, doc, onNewPage);
 
     // Parties
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.secondary);
     doc.text("PARTIES TO THE CONTRACT", margin, yPos);
-    yPos += 7;
 
+    const partiesBoxY = yPos + 7;
     doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 26, 3, 3, 'F');
+    doc.roundedRect(margin, partiesBoxY, pageWidth - (2 * margin), 26, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
-    doc.text("CONTRACTOR:", margin + 5, yPos + 8);
+    doc.text("CONTRACTOR:", margin + 5, partiesBoxY + 8);
     doc.setFont("helvetica", "normal");
-    doc.text("Pintorex Construction Limited", margin + 5, yPos + 14);
+    doc.text("Pintorex Construction Limited", margin + 5, partiesBoxY + 14);
     doc.setFontSize(8);
-    doc.text("Tel: +254 769 157174 | Email: pintorexkenya@gmail.com", margin + 5, yPos + 19);
+    doc.text("Tel: +254 769 157174 | Email: pintorexkenya@gmail.com", margin + 5, partiesBoxY + 19);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("CLIENT:", pageWidth - margin - 5, yPos + 8, { align: "right" });
+    doc.text("CLIENT:", pageWidth - margin - 5, partiesBoxY + 8, { align: "right" });
     doc.setFont("helvetica", "normal");
-    doc.text(data.clientName, pageWidth - margin - 5, yPos + 14, { align: "right" });
+    doc.text(data.clientName, pageWidth - margin - 5, partiesBoxY + 14, { align: "right" });
 
-    yPos += 33;
+    yPos = SmartSpacing.advance(yPos, 33, layout, si++, doc, onNewPage);
 
     // Scope
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.secondary);
     doc.text("SCOPE OF WORK", margin, yPos);
-    yPos += 7;
 
+    const scopeBoxY = yPos + 7;
     doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 18, 3, 3, 'F');
+    doc.roundedRect(margin, scopeBoxY, pageWidth - (2 * margin), 18, 3, 3, 'F');
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
-    doc.text(`Project Type: ${data.projectType}`, margin + 5, yPos + 8);
-    const descLines = doc.splitTextToSize(`Description: ${data.projectDescription || 'As per agreement'}`, pageWidth - (2 * margin) - 10);
-    doc.text(descLines, margin + 5, yPos + 14);
+    doc.text(`Project Type: ${data.projectType}`, margin + 5, scopeBoxY + 8);
+    doc.text(descLines, margin + 5, scopeBoxY + 14);
 
-    yPos += 25;
+    yPos = SmartSpacing.advance(yPos, 25, layout, si++, doc, onNewPage);
 
     // Contract value
     doc.setFillColor(...Colors.primary);
@@ -3036,38 +3268,28 @@ async function generateContractAgreement(data) {
     doc.text("CONTRACT VALUE:", margin + 5, yPos + 9.5);
     doc.text(`KES ${numberWithCommas(totals.total)}`, pageWidth - margin - 5, yPos + 9.5, { align: "right" });
 
-    yPos += 22;
+    yPos = SmartSpacing.advance(yPos, 14, layout, si++, doc, onNewPage);
 
     // Terms
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.secondary);
     doc.text("TERMS AND CONDITIONS", margin, yPos);
-    yPos += 7;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(...Colors.text);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...Colors.textMuted);
-    doc.text("Subject to standard terms. Defects liability: 6 months. Governed by Laws of Kenya.", margin, yPos);
+    doc.text("Subject to standard terms. Defects liability: 6 months. Governed by Laws of Kenya.", margin, yPos + 7);
 
-    yPos += 8;
+    yPos = SmartSpacing.advance(yPos, 15, layout, si++, doc, onNewPage);
 
-    // Signatures
-    yPos = SmartSpacing.checkAndAddPage(doc, yPos, 50, () => {
-        pageNum++;
-        addHeader();
-        addFooter();
-    });
-
+    // Signatures header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.secondary);
     doc.text("SIGNATURES", margin, yPos);
-    yPos += 8;
+
+    yPos = SmartSpacing.advance(yPos, 8, layout, si++, doc, onNewPage);
 
     // Two column signature boxes
     const colWidth = (pageWidth - (2 * margin) - 10) / 2;
@@ -3099,9 +3321,12 @@ async function generateContractAgreement(data) {
     doc.text("Signature & Date", margin + colWidth + 15, yPos + 23);
     doc.text(data.clientName, margin + colWidth + 15, yPos + 28);
 
+    // Gap: signature boxes -> seal (keepWithNext keeps them together)
+    yPos = SmartSpacing.advance(yPos, 35, layout, si++, doc, onNewPage);
+
     // Professional seal with QR verification
     const ctDocId = generateDocumentUUID('CONTRACT', documentNumber);
-    placeSealAndQR(doc, yPos + 35, {
+    placeSealAndQR(doc, yPos, {
         docType: 'CONTRACT',
         docNumber: documentNumber,
         date: new Date().toLocaleDateString('en-GB'),
@@ -3122,43 +3347,14 @@ async function generateRecommendationLetter(data) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('recommendation');
+    const onNewPage = () => { addProfessionalHeader(doc, 'RECOMMENDATION'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECOMMENDATION');
     addProfessionalFooter(doc);
 
     let yPos = 48;
 
-    // Title
-    doc.setTextColor(...Colors.secondary);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("RECOMMENDATION LETTER", pageWidth / 2, yPos, { align: "center" });
-
-    doc.setDrawColor(...Colors.primary);
-    doc.setLineWidth(0.5);
-    doc.line(pageWidth / 2 - 55, yPos + 3, pageWidth / 2 + 55, yPos + 3);
-
-    yPos += 10;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Reference: ${documentNumber}`, pageWidth / 2, yPos, { align: "center" });
-
-    yPos += 15;
-
-    // Date
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...Colors.text);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
-
-    yPos += 15;
-
-    // Salutation
-    doc.text("TO WHOM IT MAY CONCERN", margin, yPos);
-    yPos += 15;
-
-    // Body
+    // Pre-calculate body height for SmartSpacing
     doc.setFontSize(10);
     const bodyParagraphs = [
         `This is to certify that ${data.clientName} engaged Pintorex Construction Limited for ${data.projectType}.`,
@@ -3169,7 +3365,55 @@ async function generateRecommendationLetter(data) {
         "",
         "For further information, please contact us using the details provided above."
     ];
+    let bodyH = 0;
+    bodyParagraphs.forEach(para => {
+        if (para === "") { bodyH += 3; }
+        else { bodyH += doc.splitTextToSize(para, pageWidth - (2 * margin)).length * 5; }
+    });
 
+    // SmartSpacing: define all sections
+    const blocks = [
+        { height: 12, minGap: 6, preferredGap: 12 },
+        { height: 5, minGap: 6, preferredGap: 12 },
+        { height: 5, minGap: 6, preferredGap: 12 },
+        { height: bodyH, minGap: 5, preferredGap: 10 },
+        { height: 5, minGap: 4, preferredGap: 8 },
+        { height: 15, minGap: 0, preferredGap: 0, keepWithNext: true },
+        { height: 38, minGap: 0, preferredGap: 0 }
+    ];
+    const layout = SmartSpacing.distribute(doc, yPos, blocks);
+    let si = 0;
+
+    // Title + reference
+    doc.setTextColor(...Colors.secondary);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("RECOMMENDATION LETTER", pageWidth / 2, yPos, { align: "center" });
+
+    doc.setDrawColor(...Colors.primary);
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 55, yPos + 3, pageWidth / 2 + 55, yPos + 3);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Reference: ${documentNumber}`, pageWidth / 2, yPos + 10, { align: "center" });
+
+    yPos = SmartSpacing.advance(yPos, 12, layout, si++, doc, onNewPage);
+
+    // Date
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...Colors.text);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, pageWidth - margin, yPos, { align: "right" });
+
+    yPos = SmartSpacing.advance(yPos, 5, layout, si++, doc, onNewPage);
+
+    // Salutation
+    doc.text("TO WHOM IT MAY CONCERN", margin, yPos);
+    yPos = SmartSpacing.advance(yPos, 5, layout, si++, doc, onNewPage);
+
+    // Body
+    doc.setFontSize(10);
     bodyParagraphs.forEach(para => {
         if (para === "") {
             yPos += 3;
@@ -3179,13 +3423,13 @@ async function generateRecommendationLetter(data) {
             yPos += (lines.length * 5);
         }
     });
+    yPos = SmartSpacing.advance(yPos, 0, layout, si++, doc, onNewPage);
 
-    yPos += 10;
+    // Closing
+    doc.text("Yours faithfully,", margin, yPos);
+    yPos = SmartSpacing.advance(yPos, 5, layout, si++, doc, onNewPage);
 
     // Signature
-    doc.text("Yours faithfully,", margin, yPos);
-    yPos += 10;
-
     const signatureStartY = yPos;
     doc.setDrawColor(...Colors.textMuted);
     doc.setLineWidth(0.3);
@@ -3198,6 +3442,8 @@ async function generateRecommendationLetter(data) {
     yPos += 5;
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
+
+    yPos = SmartSpacing.advance(signatureStartY, 15, layout, si++, doc, onNewPage);
 
     // Professional seal with QR verification
     const recDocId = generateDocumentUUID('RECOMMENDATION', documentNumber);
@@ -3225,13 +3471,25 @@ async function generateReceipt(data, receiptDetails) {
     const documentNumber = DocumentRegistry.generateNumber('receipt');
     const totals = calculateTotals(data);
     const amountPaid = receiptDetails.amountPaid ? parseFloat(receiptDetails.amountPaid) : totals.total;
+    const onNewPage = () => { addProfessionalHeader(doc, 'RECEIPT'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECEIPT');
     addProfessionalFooter(doc);
 
     let yPos = 48;
 
-    // Title
+    // SmartSpacing: define all sections
+    const blocks = [
+        { height: 12, minGap: 6, preferredGap: 12 },
+        { height: 60, minGap: 5, preferredGap: 12 },
+        { height: 25, minGap: 5, preferredGap: 12 },
+        { height: 26, minGap: 0, preferredGap: 0, keepWithNext: true },
+        { height: 38, minGap: 0, preferredGap: 0 }
+    ];
+    const layout = SmartSpacing.distribute(doc, yPos, blocks);
+    let si = 0;
+
+    // Title + receipt number
     doc.setTextColor(...Colors.secondary);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
@@ -3241,15 +3499,13 @@ async function generateReceipt(data, receiptDetails) {
     doc.setLineWidth(0.5);
     doc.line(pageWidth / 2 - 22, yPos + 3, pageWidth / 2 + 22, yPos + 3);
 
-    yPos += 10;
-
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(`Receipt No: ${documentNumber}`, pageWidth / 2, yPos, { align: "center" });
+    doc.text(`Receipt No: ${documentNumber}`, pageWidth / 2, yPos + 10, { align: "center" });
 
-    yPos += 15;
+    yPos = SmartSpacing.advance(yPos, 12, layout, si++, doc, onNewPage);
 
-    // Receipt details
+    // Receipt details box
     doc.setFillColor(...Colors.subtle);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 60, 3, 3, 'F');
 
@@ -3283,7 +3539,7 @@ async function generateReceipt(data, receiptDetails) {
     doc.setFont("helvetica", "normal");
     doc.text(new Date().toLocaleDateString('en-GB'), margin + 35, detailY);
 
-    yPos += 68;
+    yPos = SmartSpacing.advance(yPos, 60, layout, si++, doc, onNewPage);
 
     // Payment method
     doc.setFillColor(255, 255, 255);
@@ -3303,7 +3559,7 @@ async function generateReceipt(data, receiptDetails) {
         doc.text(`Reference: ${receiptDetails.referenceNumber}`, margin + 80, yPos + 16);
     }
 
-    yPos += 28;
+    yPos = SmartSpacing.advance(yPos, 25, layout, si++, doc, onNewPage);
 
     // Signature
     const signatureStartY = yPos;
@@ -3326,6 +3582,8 @@ async function generateReceipt(data, receiptDetails) {
     yPos += 4;
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
+
+    yPos = SmartSpacing.advance(signatureStartY, 26, layout, si++, doc, onNewPage);
 
     // Professional seal with QR verification
     const rcptDocId = generateDocumentUUID('RECEIPT', documentNumber);
@@ -3351,6 +3609,7 @@ async function generateLPO(data, lpoDetails) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('lpo');
+    const onNewPage = () => { addProfessionalHeader(doc, 'PURCHASE ORDER'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PURCHASE ORDER');
     addProfessionalFooter(doc);
@@ -3441,9 +3700,22 @@ async function generateLPO(data, lpoDetails) {
         theme: 'grid'
     });
 
-    yPos = doc.lastAutoTable.finalY + 8;
+    yPos = doc.lastAutoTable.finalY;
 
-    // Total
+    // === POST-TABLE: SmartSpacing layout ===
+    const postBlocks = [
+        { height: 0, minGap: 8, preferredGap: 15 },
+        { height: 14, minGap: 6, preferredGap: 12, keepWithNext: true },
+        { height: 25, minGap: 0, preferredGap: 0, keepWithNext: true },
+        { height: 38, minGap: 0, preferredGap: 0 }
+    ];
+    const postLayout = SmartSpacing.distribute(doc, yPos, postBlocks);
+    let pi = 0;
+
+    // Gap: table → total bar
+    yPos = SmartSpacing.advance(yPos, 0, postLayout, pi++, doc, onNewPage);
+
+    // Total bar
     doc.setFillColor(...Colors.primary);
     doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 14, 3, 3, 'F');
 
@@ -3453,7 +3725,8 @@ async function generateLPO(data, lpoDetails) {
     doc.text("TOTAL:", margin + 5, yPos + 9.5);
     doc.text(`KES ${numberWithCommas(materialsTotal)}`, pageWidth - margin - 5, yPos + 9.5, { align: "right" });
 
-    yPos += 14;
+    // Gap: total bar → auth signature (fixes the collision!)
+    yPos = SmartSpacing.advance(yPos, 14, postLayout, pi++, doc, onNewPage);
 
     // Signature section
     const signatureStartY = yPos;
@@ -3477,6 +3750,9 @@ async function generateLPO(data, lpoDetails) {
     yPos += 4;
     doc.setFont("helvetica", "normal");
     doc.text("Director/Operations Manager", margin, yPos);
+
+    // Gap: signature → seal
+    yPos = SmartSpacing.advance(signatureStartY, 25, postLayout, pi++, doc, onNewPage);
 
     // Professional seal with QR verification
     const lpoDocId = generateDocumentUUID('LPO', documentNumber);
