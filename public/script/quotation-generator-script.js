@@ -84,56 +84,227 @@ function generateContentHash(docType, docNumber, clientName, amount) {
 }
 
 // ============================================================================
-// PWA-SAFE PDF SAVE HELPER
-// In standalone PWA mode, <a download> with blob URLs may not work on mobile.
-// This helper tries multiple strategies: File System Access API, Web Share API,
-// then falls back to opening the blob URL.
+// SAVE FOLDER MANAGER
+// Lets the user pick a parent location (e.g. Desktop) once. A "pintorex_docs"
+// sub-folder is created there automatically. The directory handle is stored in
+// IndexedDB so it persists across sessions. On each new session the browser
+// asks the user to re-grant write permission (a security requirement).
+// ============================================================================
+
+const SaveFolderManager = {
+    DB_NAME: 'pintorex_fs',
+    STORE_NAME: 'handles',
+    HANDLE_KEY: 'save_folder',
+    FOLDER_NAME: 'pintorex_docs',
+    _db: null,
+
+    isSupported() {
+        return typeof window.showDirectoryPicker === 'function';
+    },
+
+    async _openDB() {
+        if (this._db) return this._db;
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.DB_NAME, 1);
+            request.onupgradeneeded = (e) => {
+                e.target.result.createObjectStore(this.STORE_NAME);
+            };
+            request.onsuccess = (e) => { this._db = e.target.result; resolve(this._db); };
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async _storeHandle(handle) {
+        const db = await this._openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            tx.objectStore(this.STORE_NAME).put(handle, this.HANDLE_KEY);
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async getHandle() {
+        try {
+            const db = await this._openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.STORE_NAME, 'readonly');
+                const request = tx.objectStore(this.STORE_NAME).get(this.HANDLE_KEY);
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async clearHandle() {
+        const db = await this._openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(this.STORE_NAME, 'readwrite');
+            tx.objectStore(this.STORE_NAME).delete(this.HANDLE_KEY);
+            tx.oncomplete = () => resolve();
+            tx.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async pickFolder() {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        await this._storeHandle(handle);
+        return handle;
+    },
+
+    async _verifyPermission(handle) {
+        const opts = { mode: 'readwrite' };
+        if (await handle.queryPermission(opts) === 'granted') return true;
+        if (await handle.requestPermission(opts) === 'granted') return true;
+        return false;
+    },
+
+    // Returns the pintorex_docs sub-directory handle (creates it if needed)
+    async _getDocsDir(parentHandle) {
+        return await parentHandle.getDirectoryHandle(this.FOLDER_NAME, { create: true });
+    },
+
+    async saveFile(blob, filename) {
+        const handle = await this.getHandle();
+        if (!handle) return false;
+        if (!await this._verifyPermission(handle)) return false;
+
+        const docsDir = await this._getDocsDir(handle);
+        const fileHandle = await docsDir.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+    },
+
+    async saveMultipleFiles(files) {
+        const handle = await this.getHandle();
+        if (!handle) return false;
+        if (!await this._verifyPermission(handle)) return false;
+
+        const docsDir = await this._getDocsDir(handle);
+        for (const { blob, filename } of files) {
+            const fileHandle = await docsDir.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        }
+        return true;
+    },
+
+    async getDisplayName() {
+        const handle = await this.getHandle();
+        return handle ? (handle.name + '/' + this.FOLDER_NAME) : null;
+    }
+};
+
+// ============================================================================
+// PDF BATCH COLLECTOR
+// When "Generate All" is used, documents are collected into a batch instead
+// of being saved one-by-one. After generation completes, the batch is either
+// written to the pintorex_docs folder or bundled into a single ZIP download.
+// ============================================================================
+
+const PdfBatch = {
+    active: false,
+    files: [],
+
+    start() {
+        this.active = true;
+        this.files = [];
+    },
+
+    add(blob, filename) {
+        this.files.push({ blob, filename });
+    },
+
+    async finish() {
+        this.active = false;
+        const files = [...this.files];
+        this.files = [];
+
+        if (files.length === 0) return;
+
+        // 1. Try writing all files to the pintorex_docs folder
+        if (SaveFolderManager.isSupported()) {
+            try {
+                if (await SaveFolderManager.saveMultipleFiles(files)) {
+                    return;
+                }
+            } catch (e) {
+                // Permission denied or stale handle – fall through
+            }
+        }
+
+        // 2. Bundle into a single ZIP (no multiple-download prompts)
+        if (typeof JSZip !== 'undefined') {
+            const zip = new JSZip();
+            const folder = zip.folder('pintorex_docs');
+            for (const file of files) {
+                folder.file(file.filename, file.blob);
+            }
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const zipName = 'Pintorex-Documents-' + dateStr + '.zip';
+
+            // Use <a download> for the single ZIP file
+            const url = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = zipName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            return;
+        }
+
+        // 3. Last resort: download files individually with delays
+        for (const file of files) {
+            const url = URL.createObjectURL(file.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
+};
+
+// ============================================================================
+// PDF SAVE HELPER
+// Single-document save: writes to pintorex_docs folder if configured,
+// otherwise uses the standard browser download. During a batch (Generate All)
+// the blob is collected instead of saved immediately.
 // ============================================================================
 
 async function savePDFDocument(doc, filename) {
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                         window.navigator.standalone === true;
+    const blob = doc.output('blob');
 
-    if (!isStandalone) {
-        doc.save(filename);
+    // If a batch is in progress, collect instead of saving
+    if (PdfBatch.active) {
+        PdfBatch.add(blob, filename);
         return;
     }
 
-    const blob = doc.output('blob');
-
-    // 1. Try File System Access API (Chrome 86+ on Android)
-    if (window.showSaveFilePicker) {
+    // Try the pintorex_docs folder
+    if (SaveFolderManager.isSupported()) {
         try {
-            const handle = await window.showSaveFilePicker({
-                suggestedName: filename,
-                types: [{ description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } }]
-            });
-            const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            return;
-        } catch (e) {
-            // User cancelled or API unavailable, try next method
-        }
-    }
-
-    // 2. Try Web Share API with file (iOS Safari, Android)
-    if (navigator.canShare) {
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        if (navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({ files: [file], title: filename });
+            if (await SaveFolderManager.saveFile(blob, filename)) {
                 return;
-            } catch (e) {
-                // Share cancelled or failed, try next method
             }
+        } catch (e) {
+            // Fall through to standard download
         }
     }
 
-    // 3. Fallback: open blob URL in new window (user can save from there)
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    // Standard browser download
+    doc.save(filename);
 }
 
 // ============================================================================
@@ -811,12 +982,41 @@ const ModalUI = {
         });
     },
 
-    showSettings() {
+    async showSettings() {
         const settings = SettingsManager.getSettings();
         const documents = DocumentRegistry.getAllDocuments().slice(-10).reverse();
 
+        // Build save-folder section only when the API is available
+        let saveFolderSection = '';
+        if (SaveFolderManager.isSupported()) {
+            const displayName = await SaveFolderManager.getDisplayName();
+            saveFolderSection = `
+                <div>
+                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;display:inline;vertical-align:text-bottom;margin-right:6px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                        </svg>
+                        Save Folder
+                    </h3>
+                    <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: 10px;">
+                        Pick a location (e.g. Desktop) and a <strong>pintorex_docs</strong> folder will be created there. All documents — single or batch — are saved into it automatically with no download prompts.
+                    </p>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <div id="saveFolderStatus" style="flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 0.875rem; color: ${displayName ? '#059669' : '#6B7280'}; background: ${displayName ? '#ECFDF5' : '#F9FAFB'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${displayName ? '<strong>' + displayName + '</strong>' : 'No folder selected'}
+                        </div>
+                        <button type="button" id="pickSaveFolder" class="btn btn-primary btn-sm" style="flex-shrink:0;">
+                            ${displayName ? 'Change' : 'Choose Folder'}
+                        </button>
+                        ${displayName ? '<button type="button" id="clearSaveFolder" class="btn btn-outline btn-sm" style="flex-shrink:0; color:#EF4444; border-color:#EF4444;">Remove</button>' : ''}
+                    </div>
+                </div>
+            `;
+        }
+
         const content = `
             <div style="display: flex; flex-direction: column; gap: 24px;">
+                ${saveFolderSection}
                 <div>
                     <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Bank Details</h3>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -855,6 +1055,49 @@ const ModalUI = {
         ];
 
         const modal = this.createModal('Settings & Document Registry', 'Manage your preferences and view recent documents', content, buttons);
+
+        // Wire up save-folder buttons
+        const pickBtn = document.getElementById('pickSaveFolder');
+        const clearBtn = document.getElementById('clearSaveFolder');
+        const statusEl = document.getElementById('saveFolderStatus');
+
+        if (pickBtn) {
+            pickBtn.addEventListener('click', async () => {
+                try {
+                    const handle = await SaveFolderManager.pickFolder();
+                    const display = handle.name + '/' + SaveFolderManager.FOLDER_NAME;
+                    statusEl.innerHTML = '<strong>' + display + '</strong>';
+                    statusEl.style.color = '#059669';
+                    statusEl.style.background = '#ECFDF5';
+                    pickBtn.textContent = 'Change';
+                    // Add remove button if it wasn't there
+                    if (!document.getElementById('clearSaveFolder')) {
+                        const removeBtn = document.createElement('button');
+                        removeBtn.id = 'clearSaveFolder';
+                        removeBtn.className = 'btn btn-outline btn-sm';
+                        removeBtn.style.cssText = 'flex-shrink:0; color:#EF4444; border-color:#EF4444;';
+                        removeBtn.textContent = 'Remove';
+                        pickBtn.parentNode.appendChild(removeBtn);
+                        removeBtn.addEventListener('click', handleClear);
+                    }
+                    Toast.success('Documents will save to: ' + display);
+                } catch (e) {
+                    // User cancelled the picker
+                }
+            });
+        }
+
+        const handleClear = async () => {
+            await SaveFolderManager.clearHandle();
+            statusEl.innerHTML = 'No folder selected';
+            statusEl.style.color = '#6B7280';
+            statusEl.style.background = '#F9FAFB';
+            pickBtn.textContent = 'Choose Folder';
+            const removeBtn = document.getElementById('clearSaveFolder');
+            if (removeBtn) removeBtn.remove();
+            Toast.info('Save folder removed');
+        };
+        if (clearBtn) clearBtn.addEventListener('click', handleClear);
 
         modal.addEventListener('save', () => {
             const bankDetails = {
@@ -2240,6 +2483,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             { name: 'Purchase Order', fn: () => generateLPO(data, lpoDetails) }
         ];
 
+        // Start batch mode – PDFs are collected instead of saved individually
+        PdfBatch.start();
+
         let completed = 0;
 
         for (const generator of generators) {
@@ -2247,7 +2493,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             try {
                 await generator.fn();
-                await new Promise(resolve => setTimeout(resolve, 300)); // Small delay between downloads
             } catch (error) {
                 console.error(`Error generating ${generator.name}:`, error);
             }
@@ -2255,7 +2500,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             completed++;
         }
 
-        ProgressOverlay.update(completed, 'Complete!');
+        // Save / download all collected PDFs at once
+        ProgressOverlay.update(completed, 'Saving documents...');
+        try {
+            await PdfBatch.finish();
+        } catch (error) {
+            console.error('Batch save error:', error);
+            Toast.error('Some documents may not have saved correctly');
+        }
 
         setTimeout(() => {
             ProgressOverlay.hide();
