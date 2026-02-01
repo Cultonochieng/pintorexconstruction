@@ -92,7 +92,7 @@ if (mobileMenuButton && mobileMenu) {
     const mobileMenuLinks = mobileMenu.querySelectorAll('a');
 
     const openMobileMenu = () => {
-        mobileMenu.classList.remove('-translate-y-full', 'opacity-0');
+        mobileMenu.classList.remove('-translate-y-full', 'opacity-0', 'pointer-events-none');
         mobileMenu.classList.add('translate-y-0', 'opacity-100');
         mobileMenu.setAttribute('aria-hidden', 'false');
         mobileMenuButton.setAttribute('aria-expanded', 'true');
@@ -100,7 +100,7 @@ if (mobileMenuButton && mobileMenu) {
 
     const closeMobileMenu = () => {
         mobileMenu.classList.remove('translate-y-0', 'opacity-100');
-        mobileMenu.classList.add('-translate-y-full', 'opacity-0');
+        mobileMenu.classList.add('-translate-y-full', 'opacity-0', 'pointer-events-none');
         mobileMenu.setAttribute('aria-hidden', 'true');
         mobileMenuButton.setAttribute('aria-expanded', 'false');
     };
@@ -336,7 +336,25 @@ function initMap() {
 }
 
 // Initialize map when DOM is ready
-document.addEventListener('DOMContentLoaded', initMap);
+document.addEventListener('DOMContentLoaded', () => {
+    initMap();
+
+    // Invalidate map size when the map container scrolls into view.
+    // This is needed because the parent has data-aos="fade-left" which hides it
+    // initially with opacity:0 and a transform. Leaflet needs invalidateSize()
+    // called after the container becomes visible to render tiles correctly.
+    const mapContainer = document.getElementById('map-container');
+    if (mapContainer && 'IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && map) {
+                    map.invalidateSize();
+                }
+            });
+        }, { threshold: 0.1 });
+        observer.observe(mapContainer);
+    }
+});
 
 // Handle resize
 window.addEventListener('resize', () => {

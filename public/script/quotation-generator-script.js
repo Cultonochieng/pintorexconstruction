@@ -84,6 +84,59 @@ function generateContentHash(docType, docNumber, clientName, amount) {
 }
 
 // ============================================================================
+// PWA-SAFE PDF SAVE HELPER
+// In standalone PWA mode, <a download> with blob URLs may not work on mobile.
+// This helper tries multiple strategies: File System Access API, Web Share API,
+// then falls back to opening the blob URL.
+// ============================================================================
+
+async function savePDFDocument(doc, filename) {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+
+    if (!isStandalone) {
+        doc.save(filename);
+        return;
+    }
+
+    const blob = doc.output('blob');
+
+    // 1. Try File System Access API (Chrome 86+ on Android)
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: filename,
+                types: [{ description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return;
+        } catch (e) {
+            // User cancelled or API unavailable, try next method
+        }
+    }
+
+    // 2. Try Web Share API with file (iOS Safari, Android)
+    if (navigator.canShare) {
+        const file = new File([blob], filename, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({ files: [file], title: filename });
+                return;
+            } catch (e) {
+                // Share cancelled or failed, try next method
+            }
+        }
+    }
+
+    // 3. Fallback: open blob URL in new window (user can save from there)
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// ============================================================================
 // LOGO DATA (Base64 encoded for PDF embedding)
 // ============================================================================
 
@@ -2458,7 +2511,7 @@ async function generateProfessionalQuotation(data) {
     const qtAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(qtDocId, 'QUOTATION', quotationNumber, data.clientName, qtAmount).catch(() => {});
 
-    doc.save(`Pintorex-Quotation-${quotationNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Quotation-${quotationNumber}.pdf`);
 }
 
 // 2. ACCEPTANCE LETTER
@@ -2621,7 +2674,7 @@ async function generateAcceptanceLetter(data) {
     });
     storeDocumentRecord(accDocId, 'ACCEPTANCE', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    doc.save(`Pintorex-Acceptance-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Acceptance-${documentNumber}.pdf`);
 }
 
 // 3. PAYMENT REQUEST
@@ -2792,7 +2845,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     });
     storeDocumentRecord(prDocId, 'PAYMENT', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    doc.save(`Pintorex-Payment-Request-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Payment-Request-${documentNumber}.pdf`);
 }
 
 // 4. INVOICE
@@ -3009,7 +3062,7 @@ async function generateInvoice(data, invoiceDetails) {
     const invAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(invDocId, 'INVOICE', documentNumber, data.clientName, invAmount).catch(() => {});
 
-    doc.save(`Pintorex-Invoice-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Invoice-${documentNumber}.pdf`);
 }
 
 // 5. DELIVERY NOTE
@@ -3153,7 +3206,7 @@ async function generateDeliveryNote(data) {
     });
     storeDocumentRecord(dnDocId, 'DELIVERY', documentNumber, data.clientName, null).catch(() => {});
 
-    doc.save(`Pintorex-Delivery-Note-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Delivery-Note-${documentNumber}.pdf`);
 }
 
 // 6. CONTRACT AGREEMENT
@@ -3336,7 +3389,7 @@ async function generateContractAgreement(data) {
     });
     storeDocumentRecord(ctDocId, 'CONTRACT', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    doc.save(`Pintorex-Contract-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Contract-${documentNumber}.pdf`);
 }
 
 // 7. RECOMMENDATION LETTER
@@ -3458,7 +3511,7 @@ async function generateRecommendationLetter(data) {
     });
     storeDocumentRecord(recDocId, 'RECOMMENDATION', documentNumber, data.clientName, null).catch(() => {});
 
-    doc.save(`Pintorex-Recommendation-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Recommendation-${documentNumber}.pdf`);
 }
 
 // 8. RECEIPT
@@ -3598,7 +3651,7 @@ async function generateReceipt(data, receiptDetails) {
     });
     storeDocumentRecord(rcptDocId, 'RECEIPT', documentNumber, data.clientName, parseFloat(receiptDetails.amount)).catch(() => {});
 
-    doc.save(`Pintorex-Receipt-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-Receipt-${documentNumber}.pdf`);
 }
 
 // 9. LPO (Purchase Order)
@@ -3767,5 +3820,5 @@ async function generateLPO(data, lpoDetails) {
     });
     storeDocumentRecord(lpoDocId, 'LPO', documentNumber, data.clientName, materialsTotal).catch(() => {});
 
-    doc.save(`Pintorex-LPO-${documentNumber}.pdf`);
+    await savePDFDocument(doc, `Pintorex-LPO-${documentNumber}.pdf`);
 }

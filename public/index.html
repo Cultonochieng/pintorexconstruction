@@ -323,6 +323,12 @@
             width: auto;
         }
 
+        /* Mobile menu - only transition transform and opacity to prevent scroll-triggered flickering */
+        #mobile-menu {
+            transition-property: transform, opacity;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         /* Construction accent colors */
         .text-construction-orange { color: #F97316; }
         .bg-construction-orange { background-color: #F97316; }
@@ -371,7 +377,7 @@
     </header>
 
     <!-- Mobile Menu -->
-    <div id="mobile-menu" class="md:hidden bg-white dark:bg-gray-800 shadow-md fixed left-0 right-0 z-40 top-16 transition-all duration-300 transform -translate-y-full opacity-0" aria-hidden="true">
+    <div id="mobile-menu" class="md:hidden bg-white dark:bg-gray-800 shadow-md fixed left-0 right-0 z-40 top-16 duration-300 transform -translate-y-full opacity-0 pointer-events-none" aria-hidden="true">
         <nav class="container mx-auto px-6 py-3" aria-label="Mobile navigation">
             <a href="#home" class="block text-gray-700 dark:text-gray-300 hover:text-construction-orange transition duration-300 py-2 font-medium">Home</a>
             <a href="#services" class="block text-gray-700 dark:text-gray-300 hover:text-construction-orange transition duration-300 py-2 font-medium">Services</a>

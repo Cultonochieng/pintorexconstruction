@@ -979,19 +979,31 @@
 
     <!-- Service Worker Registration & PWA Logic -->
     <script>
-        // Register Service Worker
+        // Register Service Worker with auto-update support
         if ('serviceWorker' in navigator) {
+            let swRegistration = null;
+            let refreshing = false;
+
+            // Auto-reload when a new service worker takes control
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (refreshing) return;
+                refreshing = true;
+                window.location.reload();
+            });
+
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
                     .then((registration) => {
+                        swRegistration = registration;
                         console.log('[PWA] Service Worker registered, scope:', registration.scope);
 
-                        // Check for updates
+                        // When a new SW is found, tell it to activate immediately
                         registration.addEventListener('updatefound', () => {
                             const newWorker = registration.installing;
                             newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'activated') {
-                                    console.log('[PWA] New service worker activated');
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // New content available, activate it immediately
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
                                 }
                             });
                         });
@@ -1000,6 +1012,25 @@
                         console.warn('[PWA] Service Worker registration failed:', error);
                     });
             });
+
+            // Check for SW updates when the app is foregrounded
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && swRegistration) {
+                    swRegistration.update();
+                }
+            });
+
+            // Check for updates when coming back online
+            window.addEventListener('online', () => {
+                if (swRegistration) swRegistration.update();
+            });
+
+            // Periodic update check every 30 minutes
+            setInterval(() => {
+                if (swRegistration && navigator.onLine) {
+                    swRegistration.update();
+                }
+            }, 30 * 60 * 1000);
         }
 
         // Offline/Online status indicator
