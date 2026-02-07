@@ -575,7 +575,6 @@ let logoAspectRatio = 1;
 const LogoProcessor = {
     MAX_SIZE: 2 * 1024 * 1024, // 2MB upload limit
     MAX_DIM: 400, // Max width/height
-    TARGET_BYTES: 150 * 1024, // ~150KB target compressed
 
     processUpload(file) {
         return new Promise((resolve, reject) => {
@@ -594,11 +593,12 @@ const LogoProcessor = {
         });
     },
 
-    resizeImage(dataUrl) {
+    resizeImage(dataUrl, hasTransparency = false) {
         return new Promise((resolve) => {
             const img = new Image();
             img.onload = () => {
                 let w = img.width, h = img.height;
+                // Scale down to fit MAX_DIM
                 if (w > this.MAX_DIM || h > this.MAX_DIM) {
                     const scale = Math.min(this.MAX_DIM / w, this.MAX_DIM / h);
                     w = Math.round(w * scale);
@@ -608,11 +608,26 @@ const LogoProcessor = {
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
+                // Preserve transparency — do NOT fill a white background
+                ctx.clearRect(0, 0, w, h);
                 ctx.drawImage(img, 0, 0, w, h);
-                // Try PNG first, compress if too large
+                // Always use PNG to preserve transparency
                 let result = canvas.toDataURL('image/png');
-                if (result.length > this.TARGET_BYTES * 1.37) { // base64 overhead ~37%
-                    result = canvas.toDataURL('image/jpeg', 0.85);
+                // If still too large and NO transparency, try JPEG; otherwise scale down more
+                if (result.length > 200 * 1024 * 1.37) {
+                    if (!hasTransparency) {
+                        result = canvas.toDataURL('image/jpeg', 0.85);
+                    } else {
+                        // Scale down further to reduce PNG size while keeping transparency
+                        const shrink = Math.sqrt((200 * 1024 * 1.37) / result.length);
+                        const sw = Math.round(w * shrink);
+                        const sh = Math.round(h * shrink);
+                        canvas.width = sw;
+                        canvas.height = sh;
+                        ctx.clearRect(0, 0, sw, sh);
+                        ctx.drawImage(img, 0, 0, sw, sh);
+                        result = canvas.toDataURL('image/png');
+                    }
                 }
                 resolve(result);
             };
@@ -620,56 +635,109 @@ const LogoProcessor = {
         });
     },
 
-    removeBackground(dataUrl, tolerance = 40) {
+    removeBackground(dataUrl, tolerance = 50) {
         return new Promise((resolve) => {
             const img = new Image();
             img.onload = () => {
+                const W = img.width, H = img.height;
                 const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
+                canvas.width = W;
+                canvas.height = H;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, W, H);
                 const d = imageData.data;
 
-                // Sample 4 corners (5x5 pixel regions) for background color
-                const corners = [];
-                const sampleSize = 5;
-                const positions = [
-                    [0, 0], [canvas.width - sampleSize, 0],
-                    [0, canvas.height - sampleSize], [canvas.width - sampleSize, canvas.height - sampleSize]
-                ];
-                for (const [sx, sy] of positions) {
-                    let r = 0, g = 0, b = 0, count = 0;
-                    for (let py = sy; py < sy + sampleSize && py < canvas.height; py++) {
-                        for (let px = sx; px < sx + sampleSize && px < canvas.width; px++) {
-                            const i = (py * canvas.width + px) * 4;
-                            r += d[i]; g += d[i + 1]; b += d[i + 2]; count++;
-                        }
-                    }
-                    corners.push({ r: r / count, g: g / count, b: b / count });
+                // --- Flood-fill from all edges ---
+                // 1. Sample the dominant edge color (most common color along all 4 borders)
+                const edgePixels = [];
+                for (let x = 0; x < W; x++) {
+                    edgePixels.push((0 * W + x) * 4);         // top row
+                    edgePixels.push(((H - 1) * W + x) * 4);   // bottom row
+                }
+                for (let y = 1; y < H - 1; y++) {
+                    edgePixels.push((y * W + 0) * 4);         // left col
+                    edgePixels.push((y * W + (W - 1)) * 4);   // right col
                 }
 
-                // Average the corners for bg color
+                // Find median edge color (more robust than average against outliers)
+                const edgeColors = edgePixels.map(i => ({ r: d[i], g: d[i+1], b: d[i+2] }));
+                const median = (arr) => { const s = arr.slice().sort((a,b) => a-b); return s[Math.floor(s.length/2)]; };
                 const bg = {
-                    r: corners.reduce((s, c) => s + c.r, 0) / corners.length,
-                    g: corners.reduce((s, c) => s + c.g, 0) / corners.length,
-                    b: corners.reduce((s, c) => s + c.b, 0) / corners.length
+                    r: median(edgeColors.map(c => c.r)),
+                    g: median(edgeColors.map(c => c.g)),
+                    b: median(edgeColors.map(c => c.b))
                 };
 
-                // Make similar pixels transparent with feathered edges
-                const featherZone = tolerance * 1.5;
-                for (let i = 0; i < d.length; i += 4) {
-                    const dist = Math.sqrt(
-                        Math.pow(d[i] - bg.r, 2) +
-                        Math.pow(d[i + 1] - bg.g, 2) +
-                        Math.pow(d[i + 2] - bg.b, 2)
-                    );
-                    if (dist < tolerance) {
-                        d[i + 3] = 0; // Fully transparent
-                    } else if (dist < featherZone) {
-                        const alpha = Math.round(((dist - tolerance) / (featherZone - tolerance)) * d[i + 3]);
-                        d[i + 3] = alpha;
+                // 2. Flood-fill from all edge pixels that match bg color
+                const visited = new Uint8Array(W * H);
+                const toRemove = new Uint8Array(W * H);
+                const stack = [];
+
+                const colorDist = (i) => Math.sqrt(
+                    (d[i] - bg.r) ** 2 + (d[i+1] - bg.g) ** 2 + (d[i+2] - bg.b) ** 2
+                );
+
+                // Seed the flood-fill from edge pixels that match the bg
+                for (const idx of edgePixels) {
+                    const px = (idx / 4) % W;
+                    const py = Math.floor((idx / 4) / W);
+                    const key = py * W + px;
+                    if (!visited[key] && colorDist(idx) < tolerance) {
+                        stack.push(key);
+                        visited[key] = 1;
+                    }
+                }
+
+                // BFS flood-fill
+                while (stack.length > 0) {
+                    const key = stack.pop();
+                    const px = key % W;
+                    const py = Math.floor(key / W);
+                    toRemove[key] = 1;
+
+                    const neighbors = [
+                        [px-1, py], [px+1, py], [px, py-1], [px, py+1]
+                    ];
+                    for (const [nx, ny] of neighbors) {
+                        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+                        const nk = ny * W + nx;
+                        if (visited[nk]) continue;
+                        visited[nk] = 1;
+                        const ni = nk * 4;
+                        if (colorDist(ni) < tolerance) {
+                            stack.push(nk);
+                        }
+                    }
+                }
+
+                // 3. Apply transparency with feathered edges
+                const featherTol = tolerance * 1.8;
+                for (let y = 0; y < H; y++) {
+                    for (let x = 0; x < W; x++) {
+                        const key = y * W + x;
+                        const i = key * 4;
+                        if (toRemove[key]) {
+                            d[i + 3] = 0; // Fully transparent
+                        } else {
+                            // Feather pixels near removed regions
+                            let nearRemoved = false;
+                            for (let dy = -2; dy <= 2 && !nearRemoved; dy++) {
+                                for (let dx = -2; dx <= 2 && !nearRemoved; dx++) {
+                                    const ny = y + dy, nx = x + dx;
+                                    if (ny >= 0 && ny < H && nx >= 0 && nx < W && toRemove[ny * W + nx]) {
+                                        nearRemoved = true;
+                                    }
+                                }
+                            }
+                            if (nearRemoved) {
+                                const dist = colorDist(i);
+                                if (dist < featherTol) {
+                                    const alpha = Math.round((dist / featherTol) * d[i + 3]);
+                                    d[i + 3] = Math.min(d[i + 3], alpha);
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1943,10 +2011,11 @@ const ModalUI = {
                     uploadBtn.disabled = true;
                     let dataUrl = await LogoProcessor.processUpload(file);
                     const autoRemoveBg = document.getElementById('autoRemoveBg');
-                    if (autoRemoveBg && autoRemoveBg.checked) {
+                    const didRemoveBg = autoRemoveBg && autoRemoveBg.checked;
+                    if (didRemoveBg) {
                         dataUrl = await LogoProcessor.removeBackground(dataUrl);
                     }
-                    dataUrl = await LogoProcessor.resizeImage(dataUrl);
+                    dataUrl = await LogoProcessor.resizeImage(dataUrl, didRemoveBg);
                     pendingLogoUrl = dataUrl;
                     logoPreviewBox.innerHTML = `<img src="${dataUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain;">`;
                     if (removeLogoBtn) removeLogoBtn.style.display = '';

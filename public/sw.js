@@ -3,7 +3,7 @@
 // Enables offline use of the quotation generator PWA
 // ============================================================================
 
-const CACHE_NAME = 'pintorex-site-v6';
+const CACHE_NAME = 'pintorex-site-v7';
 const OFFLINE_URL = '/quotation-generator.html';
 
 // Assets to cache for offline use (full site + quotation generator)

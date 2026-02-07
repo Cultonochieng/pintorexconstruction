@@ -1218,7 +1218,7 @@
                     history.replaceState(null, '', window.location.pathname);
                 }
 
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
                     .then((registration) => {
                         swRegistration = registration;
                         console.log('[PWA] Service Worker registered, scope:', registration.scope);
@@ -1233,8 +1233,14 @@
                             });
                         });
 
-                        // Periodic update check every 30 minutes
-                        setInterval(() => { registration.update(); }, 30 * 60 * 1000);
+                        // If a waiting worker already exists (e.g. from a previous visit), activate it
+                        if (registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+
+                        // Check for update immediately, then every 3 minutes
+                        registration.update();
+                        setInterval(() => { registration.update(); }, 3 * 60 * 1000);
                     })
                     .catch((error) => {
                         console.warn('[PWA] Service Worker registration failed:', error);

@@ -929,7 +929,7 @@
                     history.replaceState(null, '', window.location.pathname);
                 }
 
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
                     .then((registration) => {
                         swRegistration = registration;
 
@@ -942,7 +942,12 @@
                             });
                         });
 
-                        setInterval(() => { registration.update(); }, 30 * 60 * 1000);
+                        if (registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+
+                        registration.update();
+                        setInterval(() => { registration.update(); }, 3 * 60 * 1000);
                     })
                     .catch(() => {});
             });
