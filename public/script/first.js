@@ -339,6 +339,9 @@ function initMap() {
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
 
+    // Safety re-render after AOS animations and service worker settle
+    setTimeout(() => { if (map) map.invalidateSize(); }, 1500);
+
     // Invalidate map size when the map container scrolls into view.
     // This is needed because the parent has data-aos="fade-left" which hides it
     // initially with opacity:0 and a transform. Leaflet needs invalidateSize()

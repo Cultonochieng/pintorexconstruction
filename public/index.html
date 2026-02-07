@@ -336,6 +336,79 @@
         .bg-construction-orange { background-color: #F97316; }
         .text-construction-dark { color: #1e293b; }
         .bg-construction-dark { background-color: #1e293b; }
+
+        /* ===== Responsiveness Enhancements ===== */
+
+        /* Ensure map always renders with a defined height */
+        #map-container {
+            min-height: 250px;
+        }
+        #map {
+            z-index: 1;
+        }
+
+        /* ---- Mobile (up to 640px) ---- */
+        @media (max-width: 640px) {
+            /* Quote form compact padding */
+            #quote .p-8 {
+                padding: 1.25rem;
+            }
+            #quote h2 {
+                font-size: 1.75rem;
+            }
+            /* Tighter contact gap */
+            #contact .gap-12 {
+                gap: 1.5rem;
+            }
+            #map-container {
+                min-height: 200px;
+                height: 200px;
+            }
+            /* Smaller footer text */
+            footer .text-xl {
+                font-size: 1rem;
+            }
+            footer .footer-logo {
+                height: 36px;
+            }
+            /* Tighter team card gaps */
+            #management .gap-6 {
+                gap: 0.75rem;
+            }
+            /* Hero text slightly smaller */
+            #home h1 {
+                font-size: 2.25rem;
+            }
+            /* Testimonial cards full width */
+            .testimonials-carousel .flex-none {
+                width: 85vw;
+            }
+        }
+
+        /* ---- Small tablets (641px - 767px) ---- */
+        @media (min-width: 641px) and (max-width: 767px) {
+            #contact .gap-12 {
+                gap: 2rem;
+            }
+        }
+
+        /* ---- Tablets (768px - 1023px) ---- */
+        @media (min-width: 640px) and (max-width: 1023px) {
+            #services .gap-8 {
+                gap: 1.25rem;
+            }
+        }
+
+        /* Project images consistent height */
+        #projects .h-48 {
+            height: 14rem;
+            object-fit: cover;
+        }
+        @media (min-width: 1024px) {
+            #projects .h-48 {
+                height: 16rem;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300 font-body">
