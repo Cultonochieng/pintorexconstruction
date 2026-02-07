@@ -1248,7 +1248,42 @@ const DocumentHistoryPanel = {
         if (filterSelect) {
             filterSelect.addEventListener('change', (e) => this.render(e.target.value));
         }
+
+        // === ONE-TIME FLUSH BUTTON — DELETE THIS BLOCK AFTER USE ===
+        this._addFlushButton();
+    },
+
+    _addFlushButton() {
+        const list = document.getElementById('historyList');
+        if (!list) return;
+        const btn = document.createElement('button');
+        btn.id = 'oneTimeFlushBtn';
+        btn.style.cssText = 'width:100%;margin-top:20px;padding:14px;background:#DC2626;color:white;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.03em;transition:opacity 0.2s;';
+        btn.textContent = 'FLUSH ALL DATA & CACHE';
+        btn.addEventListener('click', async () => {
+            if (!confirm('This will permanently erase ALL document history, counters, client history, and browser cache. Continue?')) return;
+            btn.textContent = 'Flushing...';
+            btn.disabled = true;
+            // Clear all app localStorage keys
+            ['pintorex_registry', 'pintorex_client_history', 'pintorex_settings', 'pintorex_form_autosave'].forEach(k => localStorage.removeItem(k));
+            // Reset registry to empty (keep company profiles intact)
+            localStorage.setItem('pintorex_registry', JSON.stringify({ documents: [], counters: {} }));
+            // Clear all Cache Storage
+            try {
+                const names = await caches.keys();
+                await Promise.all(names.map(n => caches.delete(n)));
+            } catch (e) { /* ok */ }
+            btn.textContent = 'Done — All data flushed';
+            btn.style.background = '#16a34a';
+            setTimeout(() => {
+                btn.remove();
+                this.render('all');
+            }, 1500);
+        });
+        // Insert at the bottom of the panel, after the list
+        list.parentElement.appendChild(btn);
     }
+    // === END ONE-TIME FLUSH BUTTON ===
 };
 
 // ============================================================================
@@ -2772,7 +2807,7 @@ function addProfessionalFooter(doc, pageNumber = null, verificationCode = null) 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
 
-    doc.text(`${company.name} | ${company.tagline}`, pageWidth / 2, footerY + 6, { align: "center" });
+    doc.text(`${(company.name || '').toUpperCase()} | ${(company.tagline || '').toUpperCase()}`, pageWidth / 2, footerY + 6, { align: "center" });
     doc.text(`${company.phone} | ${company.email} | ${company.address}`, pageWidth / 2, footerY + 11, { align: "center" });
 
     // Page number on right
@@ -3834,7 +3869,7 @@ async function generateAcceptanceLetter(data) {
 
     // Pre-calculate body text height for SmartSpacing
     const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
-    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin) - 5);
+    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin) - 10);
     const bodyH = bodyLines.length * 5;
 
     // SmartSpacing: define all sections
@@ -4062,7 +4097,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     const postBlocks = [
         { height: 0, minGap: 8, preferredGap: 15 },           // spacer: table -> AMOUNT DUE
         { height: 16, minGap: 3, preferredGap: 8 },            // AMOUNT DUE bar
-        { height: 45, minGap: 3, preferredGap: 8 },            // bank details box
+        { height: 35, minGap: 3, preferredGap: 8 },            // bank details box
         { height: 20, minGap: 0, preferredGap: 0, keepWithNext: true }, // signature
         { height: 38, minGap: 0, preferredGap: 0 }             // seal
     ];
@@ -4087,18 +4122,18 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     // Bank details
     doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 45, 3, 3, 'F');
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 35, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...Colors.secondary);
-    doc.text("BANK DETAILS", margin + 5, yPos + 10);
+    doc.text("BANK DETAILS", margin + 5, yPos + 8);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...Colors.text);
 
-    let payY = yPos + 18;
+    let payY = yPos + 14;
     const paymentInfo = [
         `Bank: ${paymentDetails.bankName}`,
         `Account: ${paymentDetails.accountNumber}`,
@@ -4109,11 +4144,11 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     paymentInfo.forEach(info => {
         doc.text(info, margin + 5, payY);
-        payY += 5;
+        payY += 4.5;
     });
 
     // Gap: bank details -> signature
-    yPos = SmartSpacing.advance(yPos, 45, postLayout, pi++, doc, onNewPage);
+    yPos = SmartSpacing.advance(yPos, 35, postLayout, pi++, doc, onNewPage);
 
     // Signature
     const signatureStartY = yPos;
