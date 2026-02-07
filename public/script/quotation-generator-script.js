@@ -22,6 +22,231 @@ const Colors = {
 };
 
 // ============================================================================
+// PROFESSIONAL COLOR THEMES (Multi-Company Support)
+// ============================================================================
+
+const COLOR_THEMES = {
+    'pintorex-orange': {
+        name: 'Pintorex Orange',
+        primary: [249, 115, 22],
+        primaryDark: [234, 88, 12],
+        secondary: [31, 41, 55],
+        secondaryLight: [55, 65, 81]
+    },
+    'corporate-blue': {
+        name: 'Corporate Blue',
+        primary: [37, 99, 235],
+        primaryDark: [29, 78, 216],
+        secondary: [15, 23, 42],
+        secondaryLight: [30, 41, 59]
+    },
+    'emerald-green': {
+        name: 'Emerald Green',
+        primary: [16, 185, 129],
+        primaryDark: [5, 150, 105],
+        secondary: [20, 33, 31],
+        secondaryLight: [36, 58, 54]
+    },
+    'crimson-red': {
+        name: 'Crimson Red',
+        primary: [220, 38, 38],
+        primaryDark: [185, 28, 28],
+        secondary: [39, 15, 15],
+        secondaryLight: [68, 28, 28]
+    },
+    'royal-purple': {
+        name: 'Royal Purple',
+        primary: [147, 51, 234],
+        primaryDark: [126, 34, 206],
+        secondary: [30, 15, 50],
+        secondaryLight: [50, 30, 70]
+    },
+    'teal-modern': {
+        name: 'Teal Modern',
+        primary: [20, 184, 166],
+        primaryDark: [13, 148, 136],
+        secondary: [17, 24, 39],
+        secondaryLight: [31, 41, 55]
+    },
+    'amber-gold': {
+        name: 'Amber Gold',
+        primary: [245, 158, 11],
+        primaryDark: [217, 119, 6],
+        secondary: [41, 31, 8],
+        secondaryLight: [68, 51, 17]
+    },
+    'slate-professional': {
+        name: 'Slate Professional',
+        primary: [100, 116, 139],
+        primaryDark: [71, 85, 105],
+        secondary: [15, 23, 42],
+        secondaryLight: [30, 41, 59]
+    }
+};
+
+// ============================================================================
+// COMPANY MANAGER (Multi-Company Profile System)
+// ============================================================================
+
+const DEFAULT_COMPANY = {
+    id: 'pintorex',
+    name: 'Pintorex Construction Limited',
+    shortName: 'PINTOREX',
+    descriptor: 'CONSTRUCTION LIMITED',
+    tagline: 'Building Excellence, Crafting Dreams',
+    phone: '+254 769 157174',
+    email: 'pintorexkenya@gmail.com',
+    address: 'Migori Town, Kenya',
+    location: 'MIGORI,  KENYA',
+    colorTheme: 'pintorex-orange',
+    documentPrefix: 'PCL',
+    logoUrl: null,
+    bankDetails: {
+        bankName: '',
+        accountName: 'Pintorex Construction Limited',
+        accountNumber: '',
+        branch: ''
+    }
+};
+
+const CompanyManager = {
+    STORAGE_KEY: 'pintorex_company_profiles',
+
+    init() {
+        if (!localStorage.getItem(this.STORAGE_KEY)) {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
+                companies: [{ ...DEFAULT_COMPANY }],
+                activeId: 'pintorex'
+            }));
+        }
+        // Ensure default company always exists
+        const data = this._getData();
+        if (!data.companies.find(c => c.id === 'pintorex')) {
+            data.companies.unshift({ ...DEFAULT_COMPANY });
+            this._saveData(data);
+        }
+        this.applyActiveTheme();
+        this._migrateCounters();
+    },
+
+    _getData() {
+        try {
+            return JSON.parse(localStorage.getItem(this.STORAGE_KEY));
+        } catch {
+            return { companies: [{ ...DEFAULT_COMPANY }], activeId: 'pintorex' };
+        }
+    },
+
+    _saveData(data) {
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    },
+
+    getAll() {
+        return this._getData().companies;
+    },
+
+    getActive() {
+        const data = this._getData();
+        return data.companies.find(c => c.id === data.activeId) || data.companies[0] || { ...DEFAULT_COMPANY };
+    },
+
+    setActive(id) {
+        const data = this._getData();
+        if (data.companies.find(c => c.id === id)) {
+            data.activeId = id;
+            this._saveData(data);
+            this.applyActiveTheme();
+        }
+    },
+
+    save(company) {
+        const data = this._getData();
+        const idx = data.companies.findIndex(c => c.id === company.id);
+        if (idx >= 0) {
+            data.companies[idx] = company;
+        } else {
+            if (data.companies.length >= 6) {
+                throw new Error('Maximum of 6 company profiles allowed');
+            }
+            data.companies.push(company);
+        }
+        this._saveData(data);
+        // If this is the active company, reapply theme
+        if (data.activeId === company.id) {
+            this.applyActiveTheme();
+        }
+    },
+
+    remove(id) {
+        if (id === 'pintorex') {
+            throw new Error('Cannot delete the default Pintorex profile');
+        }
+        const data = this._getData();
+        data.companies = data.companies.filter(c => c.id !== id);
+        if (data.activeId === id) {
+            data.activeId = 'pintorex';
+        }
+        this._saveData(data);
+        this.applyActiveTheme();
+    },
+
+    derivePrefix(name) {
+        if (!name) return '';
+        const words = name.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 1) {
+            return words[0].substring(0, 3).toUpperCase();
+        }
+        // Take first letter of each significant word (skip "and", "of", "the")
+        const skip = ['and', 'of', 'the', '&'];
+        const initials = words
+            .filter(w => !skip.includes(w.toLowerCase()))
+            .map(w => w[0])
+            .join('')
+            .toUpperCase();
+        return initials.substring(0, 4);
+    },
+
+    generateId(name) {
+        return name.trim().toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, '-')
+            .substring(0, 30);
+    },
+
+    applyActiveTheme() {
+        const company = this.getActive();
+        const theme = COLOR_THEMES[company.colorTheme] || COLOR_THEMES['pintorex-orange'];
+        // Mutate global Colors in-place so all existing code picks up the new values
+        Colors.primary = theme.primary;
+        Colors.primaryDark = theme.primaryDark;
+        Colors.secondary = theme.secondary;
+        Colors.secondaryLight = theme.secondaryLight;
+    },
+
+    _migrateCounters() {
+        try {
+            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{}');
+            if (registry._migrated || !registry.counters) return;
+            const newCounters = {};
+            for (const [key, value] of Object.entries(registry.counters)) {
+                // Only migrate keys that don't already have a company prefix
+                if (!key.includes('_') || key.split('_').length === 2) {
+                    // Old format: type_yearMonth → new format: pintorex_type_yearMonth
+                    newCounters[`pintorex_${key}`] = value;
+                } else {
+                    newCounters[key] = value;
+                }
+            }
+            registry.counters = newCounters;
+            registry._migrated = true;
+            localStorage.setItem('pintorex_registry', JSON.stringify(registry));
+        } catch (e) {
+            console.warn('Counter migration skipped:', e);
+        }
+    }
+};
+
+// ============================================================================
 // SUPABASE CLIENT CONFIGURATION (Document Verification)
 // ============================================================================
 
@@ -39,6 +264,7 @@ try {
 
 async function storeDocumentRecord(docId, docType, docNumber, clientName, amount) {
     if (!supabaseClient) return null;
+    const company = CompanyManager.getActive();
     try {
         const { data, error } = await supabaseClient
             .from('document_records')
@@ -50,7 +276,10 @@ async function storeDocumentRecord(docId, docType, docNumber, clientName, amount
                 amount: amount,
                 date_generated: new Date().toISOString(),
                 gps_coordinates: await getGPSCoordinates(),
-                content_hash: generateContentHash(docType, docNumber, clientName, amount)
+                content_hash: generateContentHash(docType, docNumber, clientName, amount),
+                company_id: company.id,
+                company_name: company.name,
+                company_theme: JSON.stringify({ colorTheme: company.colorTheme, shortName: company.shortName })
             })
             .select();
         if (error) { console.warn('Document record store failed:', error); return null; }
@@ -73,7 +302,7 @@ async function getGPSCoordinates() {
 }
 
 function generateContentHash(docType, docNumber, clientName, amount) {
-    const input = `${docType}|${docNumber}|${clientName}|${amount}|PINTOREX`;
+    const input = `${docType}|${docNumber}|${clientName}|${amount}|${CompanyManager.getActive().shortName}`;
     let hash = 0;
     for (let i = 0; i < input.length; i++) {
         const char = input.charCodeAt(i);
@@ -241,13 +470,16 @@ const PdfBatch = {
         // 2. Bundle into a single ZIP (no multiple-download prompts)
         if (typeof JSZip !== 'undefined') {
             const zip = new JSZip();
-            const folder = zip.folder('pintorex_docs');
+            const zipCompany = CompanyManager.getActive();
+            const folderName = zipCompany.shortName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_docs';
+            const folder = zip.folder(folderName);
             for (const file of files) {
                 folder.file(file.filename, file.blob);
             }
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             const dateStr = new Date().toISOString().slice(0, 10);
-            const zipName = 'Pintorex-Documents-' + dateStr + '.zip';
+            const zipSafeName = zipCompany.shortName.replace(/[^A-Za-z0-9]/g, '');
+            const zipName = zipSafeName + '-Documents-' + dateStr + '.zip';
 
             // Use <a download> for the single ZIP file
             const url = URL.createObjectURL(zipBlob);
@@ -560,7 +792,8 @@ const DocumentRegistry = {
         const yearMonth = date.getFullYear().toString().slice(-2) +
                          (date.getMonth() + 1).toString().padStart(2, '0');
 
-        const key = `${type}_${yearMonth}`;
+        const companyId = CompanyManager.getActive().id;
+        const key = `${companyId}_${type}_${yearMonth}`;
         if (!registry.counters[key]) {
             registry.counters[key] = Math.floor(Math.random() * 100) + 100;
         } else {
@@ -632,10 +865,21 @@ const SettingsManager = {
     },
 
     getBankDetails() {
+        const company = CompanyManager.getActive();
+        // Company-level bank details take priority
+        if (company.bankDetails && company.bankDetails.bankName) {
+            return company.bankDetails;
+        }
+        // Fallback to global settings (backward compatibility)
         return this.getSettings().bankDetails;
     },
 
     saveBankDetails(details) {
+        // Save to the active company profile
+        const company = CompanyManager.getActive();
+        company.bankDetails = details;
+        CompanyManager.save(company);
+        // Also update global settings for backward compatibility
         const settings = this.getSettings();
         settings.bankDetails = details;
         this.saveSettings(settings);
@@ -855,7 +1099,7 @@ const ModalUI = {
                     bankName: bankName,
                     accountNumber: accountNumber,
                     branch: document.getElementById('branch').value,
-                    accountName: 'Pintorex Construction Limited'
+                    accountName: CompanyManager.getActive().name
                 };
 
                 if (document.getElementById('saveDetails').checked) {
@@ -1014,23 +1258,60 @@ const ModalUI = {
             `;
         }
 
+        // Build company profiles section
+        const companies = CompanyManager.getAll();
+        const activeCompany = CompanyManager.getActive();
+        const activeBankDetails = SettingsManager.getBankDetails();
+        const activeTheme = COLOR_THEMES[activeCompany.colorTheme] || COLOR_THEMES['pintorex-orange'];
+
+        const companyProfilesSection = `
+            <div>
+                <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;display:inline;vertical-align:text-bottom;margin-right:6px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                    </svg>
+                    Company Profiles
+                </h3>
+                <p style="font-size: 0.8rem; color: #6B7280; margin-bottom: 10px;">
+                    Manage up to 6 company profiles. Documents use the active company's branding.
+                </p>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 0.85rem; font-weight: 500; color: #374151;">Active:</label>
+                    <select id="activeCompanySelect" style="flex: 1; padding: 8px 12px; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 0.875rem; background: #F9FAFB; min-width: 120px;">
+                        ${companies.map(c =>
+                            `<option value="${c.id}" ${c.id === activeCompany.id ? 'selected' : ''}>${c.name}</option>`
+                        ).join('')}
+                    </select>
+                    <button type="button" id="editCompanyBtn" class="btn btn-outline btn-sm" style="flex-shrink:0;">Edit</button>
+                    ${companies.length < 6 ? '<button type="button" id="addCompanyBtn" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Add</button>' : ''}
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <span style="font-size: 0.8rem; color: #6B7280;">Theme:</span>
+                    ${Object.entries(COLOR_THEMES).map(([key, theme]) => `
+                        <div data-theme="${key}" class="theme-swatch" style="width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2.5px solid ${key === activeCompany.colorTheme ? '#111827' : 'transparent'}; background: rgb(${theme.primary.join(',')}); transition: border-color 0.2s;" title="${theme.name}"></div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
         const content = `
             <div style="display: flex; flex-direction: column; gap: 24px;">
+                ${companyProfilesSection}
                 ${saveFolderSection}
                 <div>
-                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Bank Details</h3>
+                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Bank Details <span style="font-size: 0.75rem; font-weight: 400; color: #9CA3AF;">(${activeCompany.shortName})</span></h3>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
                         <div>
                             <label class="form-label" for="settingsBankName">Bank Name</label>
-                            <input type="text" id="settingsBankName" value="${settings.bankDetails.bankName}" class="form-input">
+                            <input type="text" id="settingsBankName" value="${activeBankDetails.bankName}" class="form-input">
                         </div>
                         <div>
                             <label class="form-label" for="settingsAccountNumber">Account Number</label>
-                            <input type="text" id="settingsAccountNumber" value="${settings.bankDetails.accountNumber}" class="form-input">
+                            <input type="text" id="settingsAccountNumber" value="${activeBankDetails.accountNumber}" class="form-input">
                         </div>
                         <div>
                             <label class="form-label" for="settingsBranch">Branch</label>
-                            <input type="text" id="settingsBranch" value="${settings.bankDetails.branch}" class="form-input">
+                            <input type="text" id="settingsBranch" value="${activeBankDetails.branch}" class="form-input">
                         </div>
                     </div>
                 </div>
@@ -1040,7 +1321,7 @@ const ModalUI = {
                     <div style="max-height: 200px; overflow-y: auto; border: 1px solid #D1D5DB; border-radius: 8px; padding: 12px;">
                         ${documents.length > 0 ? documents.map(doc => `
                             <div style="padding: 8px 0; border-bottom: 1px solid #F3F4F6; font-size: 0.875rem;">
-                                <strong style="color: #F97316;">${doc.number}</strong>
+                                <strong style="color: rgb(${activeTheme.primary.join(',')});">${doc.number}</strong>
                                 <span style="color: #6B7280;"> - ${doc.type} - ${new Date(doc.date).toLocaleDateString('en-GB')}</span>
                             </div>
                         `).join('') : '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No documents generated yet</div>'}
@@ -1056,6 +1337,45 @@ const ModalUI = {
 
         const modal = this.createModal('Settings & Document Registry', 'Manage your preferences and view recent documents', content, buttons);
 
+        // Wire up company profile controls
+        const companySelect = document.getElementById('activeCompanySelect');
+        if (companySelect) {
+            companySelect.addEventListener('change', (e) => {
+                CompanyManager.setActive(e.target.value);
+                Toast.success('Switched to ' + CompanyManager.getActive().name);
+                this.removeModal();
+                this.showSettings();
+            });
+        }
+        const editBtn = document.getElementById('editCompanyBtn');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                this.removeModal();
+                this.showCompanyEditor(CompanyManager.getActive());
+            });
+        }
+        const addBtn = document.getElementById('addCompanyBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                this.removeModal();
+                this.showCompanyEditor(null);
+            });
+        }
+        // Theme swatch clicks
+        document.querySelectorAll('.theme-swatch').forEach(swatch => {
+            swatch.addEventListener('click', () => {
+                const themeKey = swatch.dataset.theme;
+                const company = CompanyManager.getActive();
+                company.colorTheme = themeKey;
+                CompanyManager.save(company);
+                CompanyManager.applyActiveTheme();
+                document.querySelectorAll('.theme-swatch').forEach(s => {
+                    s.style.borderColor = s.dataset.theme === themeKey ? '#111827' : 'transparent';
+                });
+                Toast.success('Theme: ' + COLOR_THEMES[themeKey].name);
+            });
+        });
+
         // Wire up save-folder buttons
         const pickBtn = document.getElementById('pickSaveFolder');
         const clearBtn = document.getElementById('clearSaveFolder');
@@ -1070,7 +1390,6 @@ const ModalUI = {
                     statusEl.style.color = '#059669';
                     statusEl.style.background = '#ECFDF5';
                     pickBtn.textContent = 'Change';
-                    // Add remove button if it wasn't there
                     if (!document.getElementById('clearSaveFolder')) {
                         const removeBtn = document.createElement('button');
                         removeBtn.id = 'clearSaveFolder';
@@ -1104,7 +1423,7 @@ const ModalUI = {
                 bankName: document.getElementById('settingsBankName').value,
                 accountNumber: document.getElementById('settingsAccountNumber').value,
                 branch: document.getElementById('settingsBranch').value,
-                accountName: 'Pintorex Construction Limited'
+                accountName: CompanyManager.getActive().name
             };
 
             SettingsManager.saveBankDetails(bankDetails);
@@ -1115,12 +1434,204 @@ const ModalUI = {
         modal.addEventListener('close', () => {
             this.removeModal();
         });
+    },
+
+    showCompanyEditor(existingCompany) {
+        const isNew = !existingCompany;
+        const company = existingCompany || {
+            id: '', name: '', shortName: '', descriptor: '', tagline: '',
+            phone: '', email: '', address: '', location: '',
+            bankDetails: { bankName: '', accountName: '', accountNumber: '', branch: '' },
+            colorTheme: 'corporate-blue', documentPrefix: '', logoUrl: null
+        };
+
+        const escVal = (v) => (v || '').replace(/"/g, '&quot;');
+
+        const content = `
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div>
+                    <label class="form-label" style="font-weight:600;">Company Full Name *</label>
+                    <input type="text" id="companyName" value="${escVal(company.name)}" class="form-input" placeholder="e.g. Acme Builders Limited" maxlength="60">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label class="form-label" style="font-weight:600;">Short Name (headers) *</label>
+                        <input type="text" id="companyShortName" value="${escVal(company.shortName)}" class="form-input" placeholder="e.g. ACME" maxlength="20" style="text-transform:uppercase;">
+                    </div>
+                    <div>
+                        <label class="form-label">Descriptor</label>
+                        <input type="text" id="companyDescriptor" value="${escVal(company.descriptor)}" class="form-input" placeholder="e.g. BUILDERS LIMITED" maxlength="30" style="text-transform:uppercase;">
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Tagline</label>
+                    <input type="text" id="companyTagline" value="${escVal(company.tagline)}" class="form-input" placeholder="e.g. Building the Future" maxlength="50">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label class="form-label" style="font-weight:600;">Phone *</label>
+                        <input type="text" id="companyPhone" value="${escVal(company.phone)}" class="form-input" placeholder="+254 7XX XXX XXX">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-weight:600;">Email *</label>
+                        <input type="email" id="companyEmail" value="${escVal(company.email)}" class="form-input" placeholder="info@company.com">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label class="form-label">Address</label>
+                        <input type="text" id="companyAddress" value="${escVal(company.address)}" class="form-input" placeholder="City, Country">
+                    </div>
+                    <div>
+                        <label class="form-label">Seal Location Text</label>
+                        <input type="text" id="companyLocation" value="${escVal(company.location)}" class="form-input" placeholder="e.g. NAIROBI, KENYA" maxlength="25" style="text-transform:uppercase;">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label class="form-label">Doc Prefix (auto)</label>
+                        <input type="text" id="companyPrefix" value="${escVal(company.documentPrefix)}" class="form-input" placeholder="e.g. PCL" maxlength="4" style="text-transform:uppercase;">
+                    </div>
+                    <div>
+                        <label class="form-label">Color Theme</label>
+                        <select id="companyTheme" class="form-input">
+                            ${Object.entries(COLOR_THEMES).map(([key, theme]) =>
+                                `<option value="${key}" ${key === company.colorTheme ? 'selected' : ''}>${theme.name}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
+                    <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Bank Details</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div>
+                            <label class="form-label">Bank Name</label>
+                            <input type="text" id="companyBankName" value="${escVal(company.bankDetails.bankName)}" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Account Number</label>
+                            <input type="text" id="companyAccountNumber" value="${escVal(company.bankDetails.accountNumber)}" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Account Name</label>
+                            <input type="text" id="companyAccountName" value="${escVal(company.bankDetails.accountName || company.name)}" class="form-input">
+                        </div>
+                        <div>
+                            <label class="form-label">Branch</label>
+                            <input type="text" id="companyBranch" value="${escVal(company.bankDetails.branch)}" class="form-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const modalButtons = [
+            { label: 'Cancel', type: 'btn-outline', action: 'close' }
+        ];
+        if (existingCompany && existingCompany.id !== 'pintorex') {
+            modalButtons.push({ label: 'Delete', type: 'btn-outline', action: 'delete' });
+        }
+        modalButtons.push({ label: isNew ? 'Create Company' : 'Save Changes', type: 'btn-primary', action: 'save' });
+
+        const modal = this.createModal(
+            isNew ? 'Add Company Profile' : `Edit: ${company.name}`,
+            'Company details are used in all generated documents',
+            content,
+            modalButtons
+        );
+
+        // Auto-derive prefix and short name for new companies
+        const nameInput = document.getElementById('companyName');
+        const shortNameInput = document.getElementById('companyShortName');
+        const prefixInput = document.getElementById('companyPrefix');
+        if (nameInput && isNew) {
+            nameInput.addEventListener('input', () => {
+                const name = nameInput.value;
+                if (!shortNameInput._userEdited) {
+                    shortNameInput.value = name.split(/\s+/)[0].toUpperCase();
+                }
+                if (!prefixInput._userEdited) {
+                    prefixInput.value = CompanyManager.derivePrefix(name);
+                }
+            });
+            shortNameInput.addEventListener('input', () => { shortNameInput._userEdited = true; });
+            prefixInput.addEventListener('input', () => { prefixInput._userEdited = true; });
+        }
+
+        modal.addEventListener('save', () => {
+            const name = document.getElementById('companyName').value.trim();
+            const shortName = document.getElementById('companyShortName').value.trim().toUpperCase();
+            const phone = document.getElementById('companyPhone').value.trim();
+            const email = document.getElementById('companyEmail').value.trim();
+            if (!name || !shortName || !phone || !email) {
+                Toast.error('Name, short name, phone and email are required');
+                return;
+            }
+
+            const updatedCompany = {
+                id: existingCompany ? existingCompany.id : CompanyManager.generateId(name),
+                name: name,
+                shortName: shortName,
+                descriptor: document.getElementById('companyDescriptor').value.trim().toUpperCase(),
+                tagline: document.getElementById('companyTagline').value.trim(),
+                phone: phone,
+                email: email,
+                address: document.getElementById('companyAddress').value.trim(),
+                location: document.getElementById('companyLocation').value.trim().toUpperCase() || document.getElementById('companyAddress').value.trim().toUpperCase(),
+                bankDetails: {
+                    bankName: document.getElementById('companyBankName').value.trim(),
+                    accountName: document.getElementById('companyAccountName').value.trim() || name,
+                    accountNumber: document.getElementById('companyAccountNumber').value.trim(),
+                    branch: document.getElementById('companyBranch').value.trim()
+                },
+                colorTheme: document.getElementById('companyTheme').value,
+                documentPrefix: document.getElementById('companyPrefix').value.trim().toUpperCase() || CompanyManager.derivePrefix(name),
+                logoUrl: existingCompany ? existingCompany.logoUrl : null
+            };
+
+            try {
+                CompanyManager.save(updatedCompany);
+                if (!existingCompany) {
+                    CompanyManager.setActive(updatedCompany.id);
+                } else {
+                    CompanyManager.applyActiveTheme();
+                }
+                Toast.success(isNew ? 'Company created!' : 'Company updated!');
+                this.removeModal();
+                this.showSettings();
+            } catch (e) {
+                Toast.error(e.message);
+            }
+        });
+
+        modal.addEventListener('delete', () => {
+            if (confirm(`Delete ${company.name}? This cannot be undone.`)) {
+                try {
+                    CompanyManager.remove(company.id);
+                    Toast.info('Company deleted');
+                    this.removeModal();
+                    this.showSettings();
+                } catch (e) {
+                    Toast.error(e.message);
+                }
+            }
+        });
+
+        modal.addEventListener('close', () => {
+            this.removeModal();
+            this.showSettings();
+        });
     }
 };
 
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
+function getDocFilename(docType, docNumber) {
+    const safeName = CompanyManager.getActive().shortName.replace(/[^A-Za-z0-9]/g, '');
+    return `${safeName}-${docType}-${docNumber}.pdf`;
+}
 
 function numberWithCommas(x) {
     return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -1719,26 +2230,27 @@ function addProfessionalHeader(doc, documentType = '') {
     }
 
     // Company name - positioned close to logo
+    const company = CompanyManager.getActive();
     const textStartX = headerStartX + (logoWidth > 0 ? logoWidth + 3 : 0);
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("PINTOREX", textStartX, 13);
+    doc.text(company.shortName, textStartX, 13);
 
     // Tagline
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text("CONSTRUCTION LIMITED", textStartX, 19);
+    doc.text(company.descriptor || '', textStartX, 19);
     doc.setFontSize(6);
-    doc.text("Building Excellence, Crafting Dreams", textStartX, 24);
+    doc.text(company.tagline || '', textStartX, 24);
 
     // Contact info on right
     doc.setFontSize(7);
     doc.setFont("helvetica", "normal");
     const contactInfo = [
-        "Tel: +254 769 157174",
-        "Email: pintorexkenya@gmail.com",
-        "Migori Town, Kenya"
+        `Tel: ${company.phone}`,
+        `Email: ${company.email}`,
+        company.address
     ];
     let contactY = 10;
     contactInfo.forEach(info => {
@@ -1773,12 +2285,13 @@ function addProfessionalFooter(doc, pageNumber = null, verificationCode = null) 
     doc.rect(0, footerY - 1, pageWidth, 1, 'F');
 
     // Footer text
+    const company = CompanyManager.getActive();
     doc.setTextColor(...Colors.white);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
 
-    doc.text("Pintorex Construction Limited | Building Excellence, Crafting Dreams", pageWidth / 2, footerY + 6, { align: "center" });
-    doc.text("+254 769 157174 | pintorexkenya@gmail.com | Migori Town, Kenya", pageWidth / 2, footerY + 11, { align: "center" });
+    doc.text(`${company.name} | ${company.tagline}`, pageWidth / 2, footerY + 6, { align: "center" });
+    doc.text(`${company.phone} | ${company.email} | ${company.address}`, pageWidth / 2, footerY + 11, { align: "center" });
 
     // Page number on right
     if (pageNumber !== null) {
@@ -1798,7 +2311,8 @@ function addProfessionalFooter(doc, pageNumber = null, verificationCode = null) 
 function generateVerificationCode(docType, docNumber) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `PCL-${docType.substring(0, 3).toUpperCase()}-${timestamp}-${random}`;
+    const prefix = CompanyManager.getActive().documentPrefix;
+    return `${prefix}-${docType.substring(0, 3).toUpperCase()}-${timestamp}-${random}`;
 }
 
 // ============================================================================
@@ -1806,8 +2320,9 @@ function generateVerificationCode(docType, docNumber) {
 // ============================================================================
 
 function drawCompanySeal(doc, x, y, radius, verificationData) {
+    const company = CompanyManager.getActive();
     const dateStr = verificationData.date || new Date().toLocaleDateString('en-GB');
-    const hashInput = `PINTOREX|${verificationData.docType}|${verificationData.docNumber}|${dateStr}`;
+    const hashInput = `${company.shortName}|${verificationData.docType}|${verificationData.docNumber}|${dateStr}`;
 
     // Generate verification hash
     let hash = 0;
@@ -1897,21 +2412,51 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
         doc.circle(dx, dy, bit ? 0.42 : 0.16, 'F');
     }
 
+    // ===== HELPER: Calculate arc text sizing for variable-length names =====
+    function calcArcTextParams(text) {
+        const len = text.length;
+        const baseArcSpan = 144; // base: 27 chars spans 144 degrees
+        const baseLen = 27;
+        if (len <= 10) {
+            return { fontSize: Math.min(5.0, 4.2 + 0.5), arcSpan: 90 };
+        } else if (len <= 20) {
+            const ratio = len / baseLen;
+            return { fontSize: 4.2, arcSpan: Math.round(baseArcSpan * ratio * 1.1) };
+        } else if (len <= 30) {
+            const ratio = len / baseLen;
+            return { fontSize: 4.2, arcSpan: Math.round(baseArcSpan * ratio) };
+        } else {
+            const excessRatio = len / baseLen;
+            return {
+                fontSize: Math.max(3.2, 4.2 - (len - 30) * 0.05),
+                arcSpan: Math.min(170, Math.round(baseArcSpan * excessRatio))
+            };
+        }
+    }
+
     // ===== 4. TOP ARC TEXT =====
+    const topText = company.descriptor
+        ? `${company.shortName}  ${company.descriptor}`
+        : company.shortName;
+    const topParams = calcArcTextParams(topText);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(4.2);
+    doc.setFontSize(topParams.fontSize);
     doc.setTextColor(...Colors.secondary);
-    drawArcText("PINTOREX  CONSTRUCTION  LTD", x, y, textR, -72, 72, false);
+    const topHalf = topParams.arcSpan / 2;
+    drawArcText(topText, x, y, textR, -topHalf, topHalf, false);
 
     // ===== 5. STAR SEPARATORS (3 o'clock & 9 o'clock) =====
     drawStar(x + textR, y, 1.3, 0.5, Colors.primary);
     drawStar(x - textR, y, 1.3, 0.5, Colors.primary);
 
     // ===== 6. BOTTOM ARC TEXT =====
+    const bottomText = company.location || company.address.toUpperCase() || 'KENYA';
+    const bottomParams = calcArcTextParams(bottomText);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(3.8);
+    doc.setFontSize(Math.min(bottomParams.fontSize, 3.8));
     doc.setTextColor(...Colors.secondary);
-    drawArcText("MIGORI,  KENYA", x, y, textR, 218, 142, true);
+    const bottomHalf = bottomParams.arcSpan / 2;
+    drawArcText(bottomText, x, y, textR, 180 + bottomHalf, 180 - bottomHalf, true);
 
     // ===== 7. INNER ACCENT RING (orange) =====
     doc.setDrawColor(...Colors.primary);
@@ -2118,6 +2663,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Initialize systems
     DocumentRegistry.init();
     SettingsManager.init();
+    CompanyManager.init();
 
     // Load logo for PDFs
     await loadLogoForPDF();
@@ -2763,7 +3309,7 @@ async function generateProfessionalQuotation(data) {
     const qtAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(qtDocId, 'QUOTATION', quotationNumber, data.clientName, qtAmount).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Quotation-${quotationNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Quotation', quotationNumber));
 }
 
 // 2. ACCEPTANCE LETTER
@@ -2926,7 +3472,7 @@ async function generateAcceptanceLetter(data) {
     });
     storeDocumentRecord(accDocId, 'ACCEPTANCE', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Acceptance-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Acceptance', documentNumber));
 }
 
 // 3. PAYMENT REQUEST
@@ -3097,7 +3643,7 @@ async function generatePaymentRequest(data, paymentDetails) {
     });
     storeDocumentRecord(prDocId, 'PAYMENT', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Payment-Request-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Payment-Request', documentNumber));
 }
 
 // 4. INVOICE
@@ -3314,7 +3860,7 @@ async function generateInvoice(data, invoiceDetails) {
     const invAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(invDocId, 'INVOICE', documentNumber, data.clientName, invAmount).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Invoice-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Invoice', documentNumber));
 }
 
 // 5. DELIVERY NOTE
@@ -3458,7 +4004,7 @@ async function generateDeliveryNote(data) {
     });
     storeDocumentRecord(dnDocId, 'DELIVERY', documentNumber, data.clientName, null).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Delivery-Note-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Delivery-Note', documentNumber));
 }
 
 // 6. CONTRACT AGREEMENT
@@ -3534,9 +4080,10 @@ async function generateContractAgreement(data) {
     doc.setTextColor(...Colors.text);
     doc.text("CONTRACTOR:", margin + 5, partiesBoxY + 8);
     doc.setFont("helvetica", "normal");
-    doc.text("Pintorex Construction Limited", margin + 5, partiesBoxY + 14);
+    const contractCompany = CompanyManager.getActive();
+    doc.text(contractCompany.name, margin + 5, partiesBoxY + 14);
     doc.setFontSize(8);
-    doc.text("Tel: +254 769 157174 | Email: pintorexkenya@gmail.com", margin + 5, partiesBoxY + 19);
+    doc.text(`Tel: ${contractCompany.phone} | Email: ${contractCompany.email}`, margin + 5, partiesBoxY + 19);
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
@@ -3641,7 +4188,7 @@ async function generateContractAgreement(data) {
     });
     storeDocumentRecord(ctDocId, 'CONTRACT', documentNumber, data.clientName, totals.total).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Contract-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Contract', documentNumber));
 }
 
 // 7. RECOMMENDATION LETTER
@@ -3662,7 +4209,7 @@ async function generateRecommendationLetter(data) {
     // Pre-calculate body height for SmartSpacing
     doc.setFontSize(10);
     const bodyParagraphs = [
-        `This is to certify that ${data.clientName} engaged Pintorex Construction Limited for ${data.projectType}.`,
+        `This is to certify that ${data.clientName} engaged ${CompanyManager.getActive().name} for ${data.projectType}.`,
         "",
         "Throughout our professional engagement, the client demonstrated professionalism in all dealings, timely fulfillment of financial obligations, clear communication of project requirements, and strong commitment to quality standards.",
         "",
@@ -3763,7 +4310,7 @@ async function generateRecommendationLetter(data) {
     });
     storeDocumentRecord(recDocId, 'RECOMMENDATION', documentNumber, data.clientName, null).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Recommendation-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Recommendation', documentNumber));
 }
 
 // 8. RECEIPT
@@ -3903,7 +4450,7 @@ async function generateReceipt(data, receiptDetails) {
     });
     storeDocumentRecord(rcptDocId, 'RECEIPT', documentNumber, data.clientName, parseFloat(receiptDetails.amount)).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-Receipt-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('Receipt', documentNumber));
 }
 
 // 9. LPO (Purchase Order)
@@ -4072,5 +4619,5 @@ async function generateLPO(data, lpoDetails) {
     });
     storeDocumentRecord(lpoDocId, 'LPO', documentNumber, data.clientName, materialsTotal).catch(() => {});
 
-    await savePDFDocument(doc, `Pintorex-LPO-${documentNumber}.pdf`);
+    await savePDFDocument(doc, getDocFilename('LPO', documentNumber));
 }

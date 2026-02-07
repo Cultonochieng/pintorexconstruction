@@ -3,11 +3,14 @@
 // Enables offline use of the quotation generator PWA
 // ============================================================================
 
-const CACHE_NAME = 'pintorex-docgen-v5';
+const CACHE_NAME = 'pintorex-site-v1';
 const OFFLINE_URL = '/quotation-generator.html';
 
-// Assets to cache for offline use (quotation generator only)
+// Assets to cache for offline use (full site + quotation generator)
 const PRECACHE_ASSETS = [
+  '/',
+  '/index.html',
+  '/script/first.js',
   '/quotation-generator.html',
   '/styles.css',
   '/script/quotation-generator-script.js',
@@ -80,6 +83,11 @@ self.addEventListener('fetch', (event) => {
 
   // Strategy for API calls: network only (don't cache API responses)
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Protect sensitive documents — never cache
+  if (url.pathname.includes('/docs/')) {
     return;
   }
 
