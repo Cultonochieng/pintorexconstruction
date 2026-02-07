@@ -147,7 +147,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 });
 
 // ============================================================================
-// HERO CAROUSEL - LAZY LOADING IMPLEMENTATION
+// HERO CAROUSEL - RELIABLE IMAGE LOADING
 // ============================================================================
 
 const carouselConfig = {
@@ -155,115 +155,121 @@ const carouselConfig = {
     imageStart: 1,
     imageEnd: 215,
     interval: 5000,
-    preloadAhead: 3, // Only preload 3 images ahead
-    extensions: ['jpeg', 'jpg', 'png', 'webp']
+    preloadAhead: 5,
+    extensions: ['jpeg', 'jpg', 'png']
 };
 
-let currentSlide = carouselConfig.imageStart;
-let availableImages = [];
+// Ordered list of images confirmed to exist
+let discoveredImages = [];
+let currentSlideIdx = 0;
 let carouselInterval = null;
+let discoveryInProgress = false;
 
 const heroCarousel = document.getElementById('carouselImage');
 const prevButton = document.querySelector('.carousel-nav.prev');
 const nextButton = document.querySelector('.carousel-nav.next');
 
+// Load an image using an Image object (much more reliable than HEAD requests)
+function probeImage(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(url);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+}
+
 // Try loading image with different extensions
 async function tryLoadImage(index) {
     const baseUrl = `${carouselConfig.imagePrefix}${index}`;
-
-    for (const ext of carouselConfig.extensions) {
-        const url = `${baseUrl}.${ext}`;
-        try {
-            const response = await fetch(url, { method: 'HEAD' });
-            if (response.ok) {
-                return url;
-            }
-        } catch (e) {
-            continue;
-        }
-    }
-    return null;
+    // Try all extensions in parallel for speed
+    const results = await Promise.all(
+        carouselConfig.extensions.map(ext => probeImage(`${baseUrl}.${ext}`))
+    );
+    return results.find(url => url !== null) || null;
 }
 
-// Preload images around current position
-async function preloadNearbyImages(centerIndex) {
-    const promises = [];
-    const start = Math.max(carouselConfig.imageStart, centerIndex - 1);
-    const end = Math.min(carouselConfig.imageEnd, centerIndex + carouselConfig.preloadAhead);
+// Discover all available images in a batch (runs in background)
+async function discoverAllImages() {
+    if (discoveryInProgress) return;
+    discoveryInProgress = true;
 
-    for (let i = start; i <= end; i++) {
-        if (!availableImages[i]) {
+    const batchSize = 20;
+    for (let start = carouselConfig.imageStart; start <= carouselConfig.imageEnd; start += batchSize) {
+        const end = Math.min(start + batchSize - 1, carouselConfig.imageEnd);
+        const promises = [];
+        for (let i = start; i <= end; i++) {
+            // Skip if already discovered
+            if (discoveredImages.some(img => img.index === i)) continue;
             promises.push(
                 tryLoadImage(i).then(url => {
-                    if (url) availableImages[i] = url;
+                    if (url) {
+                        discoveredImages.push({ index: i, url });
+                        // Keep sorted by index
+                        discoveredImages.sort((a, b) => a.index - b.index);
+                    }
                 })
             );
         }
+        await Promise.all(promises);
     }
-
-    await Promise.all(promises);
+    discoveryInProgress = false;
 }
 
-// Show slide
-function showSlide(index) {
-    if (availableImages[index]) {
-        heroCarousel.src = availableImages[index];
-        currentSlide = index;
-        preloadNearbyImages(index);
+// Preload images around the current position
+function preloadNearby() {
+    const idx = currentSlideIdx;
+    for (let offset = 1; offset <= carouselConfig.preloadAhead; offset++) {
+        const nextIdx = (idx + offset) % discoveredImages.length;
+        if (discoveredImages[nextIdx]) {
+            const img = new Image();
+            img.src = discoveredImages[nextIdx].url;
+        }
     }
 }
 
-// Next slide
+// Show slide by discoveredImages index
+function showSlide(idx) {
+    if (!heroCarousel || discoveredImages.length === 0) return;
+    if (idx < 0) idx = discoveredImages.length - 1;
+    if (idx >= discoveredImages.length) idx = 0;
+    currentSlideIdx = idx;
+    heroCarousel.src = discoveredImages[idx].url;
+    preloadNearby();
+}
+
+// Next / previous
 function nextSlide() {
-    let nextIndex = currentSlide + 1;
-    if (nextIndex > carouselConfig.imageEnd) {
-        nextIndex = carouselConfig.imageStart;
-    }
-
-    // Find next available image
-    let attempts = 0;
-    while (!availableImages[nextIndex] && attempts < 10) {
-        nextIndex++;
-        if (nextIndex > carouselConfig.imageEnd) {
-            nextIndex = carouselConfig.imageStart;
-        }
-        attempts++;
-    }
-
-    showSlide(nextIndex);
+    showSlide(currentSlideIdx + 1);
 }
 
-// Previous slide
 function prevSlide() {
-    let prevIndex = currentSlide - 1;
-    if (prevIndex < carouselConfig.imageStart) {
-        prevIndex = carouselConfig.imageEnd;
-    }
-
-    // Find previous available image
-    let attempts = 0;
-    while (!availableImages[prevIndex] && attempts < 10) {
-        prevIndex--;
-        if (prevIndex < carouselConfig.imageStart) {
-            prevIndex = carouselConfig.imageEnd;
-        }
-        attempts++;
-    }
-
-    showSlide(prevIndex);
+    showSlide(currentSlideIdx - 1);
 }
 
 // Initialize carousel
 async function initializeCarousel() {
     if (!heroCarousel) return;
 
-    // Load initial images
-    await preloadNearbyImages(carouselConfig.imageStart);
+    // Discover the first small batch quickly so the carousel can start
+    const initialBatch = [];
+    for (let i = carouselConfig.imageStart; i <= Math.min(carouselConfig.imageStart + 9, carouselConfig.imageEnd); i++) {
+        initialBatch.push(
+            tryLoadImage(i).then(url => {
+                if (url) discoveredImages.push({ index: i, url });
+            })
+        );
+    }
+    await Promise.all(initialBatch);
+    discoveredImages.sort((a, b) => a.index - b.index);
 
-    if (availableImages[carouselConfig.imageStart]) {
-        showSlide(carouselConfig.imageStart);
+    if (discoveredImages.length > 0) {
+        showSlide(0);
         carouselInterval = setInterval(nextSlide, carouselConfig.interval);
     }
+
+    // Continue discovering the rest in the background
+    discoverAllImages();
 }
 
 // Carousel navigation
