@@ -3,7 +3,7 @@
 // Enables offline use of the quotation generator PWA
 // ============================================================================
 
-const CACHE_NAME = 'pintorex-site-v3';
+const CACHE_NAME = 'pintorex-site-v5';
 const OFFLINE_URL = '/quotation-generator.html';
 
 // Assets to cache for offline use (full site + quotation generator)
@@ -66,6 +66,15 @@ self.addEventListener('activate', (event) => {
       .then(() => {
         // Take control of all pages immediately
         return self.clients.claim();
+      })
+      .then(() => {
+        // Notify all open tabs that the SW has been updated
+        return self.clients.matchAll({ type: 'window' });
+      })
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED', version: CACHE_NAME });
+        });
       })
   );
 });

@@ -101,6 +101,9 @@ const DEFAULT_COMPANY = {
     colorTheme: 'pintorex-orange',
     documentPrefix: 'PCL',
     logoUrl: null,
+    signatoryName: 'Joseph Ochieng',
+    signatoryTitle: 'Director/Operations Manager',
+    verificationBaseUrl: 'https://pintorexconstruction.onrender.com',
     bankDetails: {
         bankName: '',
         accountName: 'Pintorex Construction Limited',
@@ -127,6 +130,7 @@ const CompanyManager = {
         }
         this.applyActiveTheme();
         this._migrateCounters();
+        this._migrateNewFields();
     },
 
     _getData() {
@@ -156,6 +160,7 @@ const CompanyManager = {
             data.activeId = id;
             this._saveData(data);
             this.applyActiveTheme();
+            loadLogoForPDF();
         }
     },
 
@@ -243,6 +248,23 @@ const CompanyManager = {
         } catch (e) {
             console.warn('Counter migration skipped:', e);
         }
+    },
+
+    _migrateNewFields() {
+        const data = this._getData();
+        let changed = false;
+        data.companies.forEach(c => {
+            if (!c.hasOwnProperty('signatoryName')) {
+                c.signatoryName = c.id === 'pintorex' ? 'Joseph Ochieng' : '';
+                c.signatoryTitle = c.id === 'pintorex' ? 'Director/Operations Manager' : '';
+                changed = true;
+            }
+            if (!c.hasOwnProperty('verificationBaseUrl')) {
+                c.verificationBaseUrl = c.id === 'pintorex' ? 'https://pintorexconstruction.onrender.com' : '';
+                changed = true;
+            }
+        });
+        if (changed) this._saveData(data);
     }
 };
 
@@ -546,7 +568,141 @@ async function savePDFDocument(doc, filename) {
 let logoDataUrl = null;
 let logoAspectRatio = 1;
 
+// ============================================================================
+// LOGO PROCESSOR - Resize, compress, and remove background from logos
+// ============================================================================
+
+const LogoProcessor = {
+    MAX_SIZE: 2 * 1024 * 1024, // 2MB upload limit
+    MAX_DIM: 400, // Max width/height
+    TARGET_BYTES: 150 * 1024, // ~150KB target compressed
+
+    processUpload(file) {
+        return new Promise((resolve, reject) => {
+            if (file.size > this.MAX_SIZE) {
+                reject(new Error('File too large. Max 2MB.'));
+                return;
+            }
+            if (!file.type.match(/^image\/(png|jpe?g|gif|webp)$/)) {
+                reject(new Error('Unsupported format. Use PNG, JPG, GIF, or WebP.'));
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    },
+
+    resizeImage(dataUrl) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                let w = img.width, h = img.height;
+                if (w > this.MAX_DIM || h > this.MAX_DIM) {
+                    const scale = Math.min(this.MAX_DIM / w, this.MAX_DIM / h);
+                    w = Math.round(w * scale);
+                    h = Math.round(h * scale);
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                // Try PNG first, compress if too large
+                let result = canvas.toDataURL('image/png');
+                if (result.length > this.TARGET_BYTES * 1.37) { // base64 overhead ~37%
+                    result = canvas.toDataURL('image/jpeg', 0.85);
+                }
+                resolve(result);
+            };
+            img.src = dataUrl;
+        });
+    },
+
+    removeBackground(dataUrl, tolerance = 40) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const d = imageData.data;
+
+                // Sample 4 corners (5x5 pixel regions) for background color
+                const corners = [];
+                const sampleSize = 5;
+                const positions = [
+                    [0, 0], [canvas.width - sampleSize, 0],
+                    [0, canvas.height - sampleSize], [canvas.width - sampleSize, canvas.height - sampleSize]
+                ];
+                for (const [sx, sy] of positions) {
+                    let r = 0, g = 0, b = 0, count = 0;
+                    for (let py = sy; py < sy + sampleSize && py < canvas.height; py++) {
+                        for (let px = sx; px < sx + sampleSize && px < canvas.width; px++) {
+                            const i = (py * canvas.width + px) * 4;
+                            r += d[i]; g += d[i + 1]; b += d[i + 2]; count++;
+                        }
+                    }
+                    corners.push({ r: r / count, g: g / count, b: b / count });
+                }
+
+                // Average the corners for bg color
+                const bg = {
+                    r: corners.reduce((s, c) => s + c.r, 0) / corners.length,
+                    g: corners.reduce((s, c) => s + c.g, 0) / corners.length,
+                    b: corners.reduce((s, c) => s + c.b, 0) / corners.length
+                };
+
+                // Make similar pixels transparent with feathered edges
+                const featherZone = tolerance * 1.5;
+                for (let i = 0; i < d.length; i += 4) {
+                    const dist = Math.sqrt(
+                        Math.pow(d[i] - bg.r, 2) +
+                        Math.pow(d[i + 1] - bg.g, 2) +
+                        Math.pow(d[i + 2] - bg.b, 2)
+                    );
+                    if (dist < tolerance) {
+                        d[i + 3] = 0; // Fully transparent
+                    } else if (dist < featherZone) {
+                        const alpha = Math.round(((dist - tolerance) / (featherZone - tolerance)) * d[i + 3]);
+                        d[i + 3] = alpha;
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.src = dataUrl;
+        });
+    }
+};
+
 async function loadLogoForPDF() {
+    const company = CompanyManager.getActive();
+    // If company has a custom logo, use it
+    if (company.logoUrl) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = function() {
+                logoDataUrl = company.logoUrl;
+                logoAspectRatio = img.width / img.height;
+                resolve(logoDataUrl);
+            };
+            img.onerror = function() {
+                console.warn('Custom logo failed to load, falling back to default');
+                loadDefaultLogo().then(resolve);
+            };
+            img.src = company.logoUrl;
+        });
+    }
+    return loadDefaultLogo();
+}
+
+async function loadDefaultLogo() {
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -818,11 +974,30 @@ const DocumentRegistry = {
             number: number,
             type: type,
             date: date.toISOString(),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            companyId: companyId,
+            clientName: '',
+            amount: 0,
+            formDataSnapshot: null
         });
+
+        // Prune to 30 most recent documents
+        if (registry.documents.length > 30) {
+            registry.documents = registry.documents.slice(-30);
+        }
 
         localStorage.setItem('pintorex_registry', JSON.stringify(registry));
         return number;
+    },
+
+    updateLastDocument(extraData) {
+        const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
+        if (registry.documents.length === 0) return;
+        const last = registry.documents[registry.documents.length - 1];
+        if (extraData.clientName) last.clientName = extraData.clientName;
+        if (extraData.amount) last.amount = extraData.amount;
+        if (extraData.formDataSnapshot) last.formDataSnapshot = extraData.formDataSnapshot;
+        localStorage.setItem('pintorex_registry', JSON.stringify(registry));
     },
 
     getLastDocument(type) {
@@ -833,7 +1008,109 @@ const DocumentRegistry = {
 
     getAllDocuments() {
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
-        return registry.documents;
+        return (registry.documents || []).slice().reverse();
+    },
+
+    getDocumentsByType(type) {
+        return this.getAllDocuments().filter(d => d.type === type);
+    }
+};
+
+// ============================================================================
+// DOCUMENT HISTORY PANEL
+// ============================================================================
+
+const DocumentHistoryPanel = {
+    TYPE_COLORS: {
+        quotation: '#F97316',
+        invoice: '#8B5CF6',
+        acceptance: '#10B981',
+        payment: '#3B82F6',
+        delivery: '#64748B',
+        contract: '#EF4444',
+        recommendation: '#F59E0B',
+        receipt: '#14B8A6',
+        lpo: '#334155'
+    },
+    TYPE_LABELS: {
+        quotation: 'QT', invoice: 'IV', acceptance: 'CA', payment: 'PR',
+        delivery: 'DN', contract: 'CT', recommendation: 'RL', receipt: 'RC', lpo: 'LP'
+    },
+    TYPE_NAMES: {
+        quotation: 'Quotation', invoice: 'Invoice', acceptance: 'Acceptance',
+        payment: 'Payment Request', delivery: 'Delivery Note', contract: 'Contract',
+        recommendation: 'Recommendation', receipt: 'Receipt', lpo: 'Purchase Order'
+    },
+
+    open() {
+        const overlay = document.getElementById('historyOverlay');
+        const panel = document.getElementById('historyPanel');
+        if (!overlay || !panel) return;
+        this.render('all');
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+            panel.classList.add('active');
+        });
+    },
+
+    close() {
+        const overlay = document.getElementById('historyOverlay');
+        const panel = document.getElementById('historyPanel');
+        if (overlay) overlay.classList.remove('active');
+        if (panel) panel.classList.remove('active');
+    },
+
+    render(filterType) {
+        const list = document.getElementById('historyList');
+        if (!list) return;
+
+        let docs = filterType === 'all'
+            ? DocumentRegistry.getAllDocuments()
+            : DocumentRegistry.getDocumentsByType(filterType);
+
+        if (docs.length === 0) {
+            list.innerHTML = `
+                <div class="history-empty">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div style="font-size: 0.9rem; font-weight: 500;">No documents yet</div>
+                    <div style="font-size: 0.75rem; margin-top: 4px;">Generated documents will appear here</div>
+                </div>
+            `;
+            return;
+        }
+
+        list.innerHTML = docs.map(doc => {
+            const color = this.TYPE_COLORS[doc.type] || '#6B7280';
+            const label = this.TYPE_LABELS[doc.type] || '??';
+            const typeName = this.TYPE_NAMES[doc.type] || doc.type;
+            const dateStr = doc.date ? new Date(doc.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+            const amountStr = doc.amount ? `KES ${numberWithCommas(doc.amount)}` : '';
+            return `
+                <div class="history-item">
+                    <div class="history-type-badge" style="background: ${color};">${label}</div>
+                    <div class="history-item-info">
+                        <div class="history-item-number">${doc.number}</div>
+                        <div class="history-item-client">${doc.clientName || typeName}</div>
+                        <div class="history-item-meta">${dateStr}</div>
+                    </div>
+                    ${amountStr ? `<div class="history-item-amount">${amountStr}</div>` : ''}
+                </div>
+            `;
+        }).join('');
+    },
+
+    init() {
+        const overlay = document.getElementById('historyOverlay');
+        const closeBtn = document.getElementById('historyPanelClose');
+        const filterSelect = document.getElementById('historyFilterType');
+
+        if (overlay) overlay.addEventListener('click', () => this.close());
+        if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+        if (filterSelect) {
+            filterSelect.addEventListener('change', (e) => this.render(e.target.value));
+        }
     }
 };
 
@@ -1228,7 +1505,6 @@ const ModalUI = {
 
     async showSettings() {
         const settings = SettingsManager.getSettings();
-        const documents = DocumentRegistry.getAllDocuments().slice(-10).reverse();
 
         // Build save-folder section only when the API is available
         let saveFolderSection = '';
@@ -1316,17 +1592,7 @@ const ModalUI = {
                     </div>
                 </div>
 
-                <div>
-                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">Recent Documents</h3>
-                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #D1D5DB; border-radius: 8px; padding: 12px;">
-                        ${documents.length > 0 ? documents.map(doc => `
-                            <div style="padding: 8px 0; border-bottom: 1px solid #F3F4F6; font-size: 0.875rem;">
-                                <strong style="color: rgb(${activeTheme.primary.join(',')});">${doc.number}</strong>
-                                <span style="color: #6B7280;"> - ${doc.type} - ${new Date(doc.date).toLocaleDateString('en-GB')}</span>
-                            </div>
-                        `).join('') : '<div style="color: #9CA3AF; text-align: center; padding: 20px;">No documents generated yet</div>'}
-                    </div>
-                </div>
+                <!-- Document history moved to dedicated History panel -->
             </div>
         `;
 
@@ -1335,7 +1601,7 @@ const ModalUI = {
             { label: 'Save Settings', type: 'btn-primary', action: 'save' }
         ];
 
-        const modal = this.createModal('Settings & Document Registry', 'Manage your preferences and view recent documents', content, buttons);
+        const modal = this.createModal('Settings', 'Manage your company profiles and preferences', content, buttons);
 
         // Wire up company profile controls
         const companySelect = document.getElementById('activeCompanySelect');
@@ -1441,6 +1707,7 @@ const ModalUI = {
         const company = existingCompany || {
             id: '', name: '', shortName: '', descriptor: '', tagline: '',
             phone: '', email: '', address: '', location: '',
+            signatoryName: '', signatoryTitle: '', verificationBaseUrl: '',
             bankDetails: { bankName: '', accountName: '', accountNumber: '', branch: '' },
             colorTheme: 'corporate-blue', documentPrefix: '', logoUrl: null
         };
@@ -1502,6 +1769,43 @@ const ModalUI = {
                     </div>
                 </div>
                 <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
+                    <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Company Logo</h4>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div id="logoPreviewBox" style="width: 80px; height: 80px; border: 2px dashed #D1D5DB; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #F9FAFB; flex-shrink: 0;">
+                            ${company.logoUrl ? `<img src="${company.logoUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain;">` : '<span style="font-size: 0.7rem; color: #9CA3AF; text-align: center;">No logo</span>'}
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                            <input type="file" id="companyLogoFile" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" id="uploadLogoBtn" style="padding: 6px 14px; font-size: 0.8rem; background: #374151; color: white; border: none; border-radius: 6px; cursor: pointer;">Upload Logo</button>
+                                <button type="button" id="removeLogoBtn" style="padding: 6px 10px; font-size: 0.75rem; background: none; color: #EF4444; border: 1px solid #EF4444; border-radius: 6px; cursor: pointer; ${company.logoUrl ? '' : 'display: none;'}">Remove</button>
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #6B7280; cursor: pointer;">
+                                <input type="checkbox" id="autoRemoveBg" checked style="accent-color: #374151;"> Auto-remove background
+                            </label>
+                            <span style="font-size: 0.65rem; color: #9CA3AF;">PNG/JPG/WebP, max 2MB</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
+                    <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Signatory & Verification</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div>
+                            <label class="form-label">Signatory Name</label>
+                            <input type="text" id="companySignatoryName" value="${escVal(company.signatoryName)}" class="form-input" placeholder="e.g. John Doe" maxlength="40">
+                        </div>
+                        <div>
+                            <label class="form-label">Signatory Title</label>
+                            <input type="text" id="companySignatoryTitle" value="${escVal(company.signatoryTitle)}" class="form-input" placeholder="e.g. Managing Director" maxlength="40">
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label class="form-label">Verification URL</label>
+                        <input type="url" id="companyVerificationUrl" value="${escVal(company.verificationBaseUrl)}" class="form-input" placeholder="https://yoursite.com">
+                        <span style="font-size: 0.7rem; color: #9CA3AF;">QR codes on documents will link to this URL for verification</span>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
                     <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Bank Details</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div>
@@ -1558,6 +1862,48 @@ const ModalUI = {
             prefixInput.addEventListener('input', () => { prefixInput._userEdited = true; });
         }
 
+        // Logo upload wiring
+        let pendingLogoUrl = existingCompany ? existingCompany.logoUrl : null;
+        const uploadBtn = document.getElementById('uploadLogoBtn');
+        const removeLogoBtn = document.getElementById('removeLogoBtn');
+        const logoFileInput = document.getElementById('companyLogoFile');
+        const logoPreviewBox = document.getElementById('logoPreviewBox');
+
+        if (uploadBtn && logoFileInput) {
+            uploadBtn.addEventListener('click', () => logoFileInput.click());
+            logoFileInput.addEventListener('change', async () => {
+                const file = logoFileInput.files[0];
+                if (!file) return;
+                try {
+                    uploadBtn.textContent = 'Processing...';
+                    uploadBtn.disabled = true;
+                    let dataUrl = await LogoProcessor.processUpload(file);
+                    const autoRemoveBg = document.getElementById('autoRemoveBg');
+                    if (autoRemoveBg && autoRemoveBg.checked) {
+                        dataUrl = await LogoProcessor.removeBackground(dataUrl);
+                    }
+                    dataUrl = await LogoProcessor.resizeImage(dataUrl);
+                    pendingLogoUrl = dataUrl;
+                    logoPreviewBox.innerHTML = `<img src="${dataUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain;">`;
+                    if (removeLogoBtn) removeLogoBtn.style.display = '';
+                    Toast.success('Logo processed');
+                } catch (e) {
+                    Toast.error(e.message);
+                } finally {
+                    uploadBtn.textContent = 'Upload Logo';
+                    uploadBtn.disabled = false;
+                }
+            });
+        }
+        if (removeLogoBtn) {
+            removeLogoBtn.addEventListener('click', () => {
+                pendingLogoUrl = null;
+                logoPreviewBox.innerHTML = '<span style="font-size: 0.7rem; color: #9CA3AF; text-align: center;">No logo</span>';
+                removeLogoBtn.style.display = 'none';
+                if (logoFileInput) logoFileInput.value = '';
+            });
+        }
+
         modal.addEventListener('save', () => {
             const name = document.getElementById('companyName').value.trim();
             const shortName = document.getElementById('companyShortName').value.trim().toUpperCase();
@@ -1586,7 +1932,10 @@ const ModalUI = {
                 },
                 colorTheme: document.getElementById('companyTheme').value,
                 documentPrefix: document.getElementById('companyPrefix').value.trim().toUpperCase() || CompanyManager.derivePrefix(name),
-                logoUrl: existingCompany ? existingCompany.logoUrl : null
+                signatoryName: document.getElementById('companySignatoryName').value.trim(),
+                signatoryTitle: document.getElementById('companySignatoryTitle').value.trim(),
+                verificationBaseUrl: document.getElementById('companyVerificationUrl').value.trim(),
+                logoUrl: pendingLogoUrl
             };
 
             try {
@@ -1595,6 +1944,7 @@ const ModalUI = {
                     CompanyManager.setActive(updatedCompany.id);
                 } else {
                     CompanyManager.applyActiveTheme();
+                    loadLogoForPDF();
                 }
                 Toast.success(isNew ? 'Company created!' : 'Company updated!');
                 this.removeModal();
@@ -2417,8 +2767,10 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
         const len = text.length;
         const baseArcSpan = 144; // base: 27 chars spans 144 degrees
         const baseLen = 27;
-        if (len <= 10) {
-            return { fontSize: Math.min(5.0, 4.2 + 0.5), arcSpan: 90 };
+        if (len <= 5) {
+            return { fontSize: 4.7, arcSpan: Math.max(30, len * 10) };
+        } else if (len <= 10) {
+            return { fontSize: 4.7, arcSpan: Math.max(50, len * 8) };
         } else if (len <= 20) {
             const ratio = len / baseLen;
             return { fontSize: 4.2, arcSpan: Math.round(baseArcSpan * ratio * 1.1) };
@@ -2450,7 +2802,7 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
     drawStar(x - textR, y, 1.3, 0.5, Colors.primary);
 
     // ===== 6. BOTTOM ARC TEXT =====
-    const bottomText = company.location || company.address.toUpperCase() || 'KENYA';
+    const bottomText = company.location || (company.address ? company.address.toUpperCase() : '') || 'KENYA';
     const bottomParams = calcArcTextParams(bottomText);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(Math.min(bottomParams.fontSize, 3.8));
@@ -2469,7 +2821,8 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
     // Render verification QR code elegantly centered inside the seal
     try {
         const docId = verificationData.documentId || generateDocumentUUID(verificationData.docType || 'DOC', verificationData.docNumber || '000');
-        const verificationUrl = `https://pintorexconstruction.onrender.com/verify/${docId}`;
+        const baseUrl = company.verificationBaseUrl || 'https://pintorexconstruction.onrender.com';
+        const verificationUrl = `${baseUrl}/verify/${docId}`;
         const qr = qrcode(0, 'M');
         qr.addData(verificationUrl);
         qr.make();
@@ -2681,6 +3034,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     settingsButton.setAttribute('aria-label', 'Open settings');
     settingsButton.addEventListener('click', () => ModalUI.showSettings());
     document.body.appendChild(settingsButton);
+
+    // Add history button
+    const historyButton = document.createElement('button');
+    historyButton.className = 'history-btn';
+    historyButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        History
+    `;
+    historyButton.setAttribute('aria-label', 'View document history');
+    historyButton.addEventListener('click', () => DocumentHistoryPanel.open());
+    document.body.appendChild(historyButton);
+
+    // Initialize history panel events
+    DocumentHistoryPanel.init();
 
     // Check for existing session (supports both online session and offline cached token)
     const loginSection = document.getElementById('loginSection');
@@ -3096,6 +3465,8 @@ async function generateProfessionalQuotation(data) {
     addFooter();
 
     const quotationNumber = DocumentRegistry.generateNumber('quotation');
+    const _qtTotals = calculateTotals(data);
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: _qtTotals.total });
 
     // Title
     doc.setTextColor(...Colors.secondary);
@@ -3192,10 +3563,10 @@ async function generateProfessionalQuotation(data) {
         columnStyles: {
             0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
-            2: { cellWidth: 22, halign: 'center' },
-            3: { cellWidth: 20, halign: 'center' },
-            4: { cellWidth: 32, halign: 'right' },
-            5: { cellWidth: 32, halign: 'right' }
+            2: { cellWidth: 20, halign: 'center' },
+            3: { cellWidth: 16, halign: 'center' },
+            4: { cellWidth: 38, halign: 'right' },
+            5: { cellWidth: 38, halign: 'right' }
         },
         alternateRowStyles: {
             fillColor: [250, 250, 250]
@@ -3319,7 +3690,9 @@ async function generateAcceptanceLetter(data) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('acceptance');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
     const onNewPage = () => { addProfessionalHeader(doc, 'ACCEPTANCE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'ACCEPTANCE');
@@ -3330,7 +3703,7 @@ async function generateAcceptanceLetter(data) {
 
     // Pre-calculate body text height for SmartSpacing
     const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
-    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
+    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin) - 5);
     const bodyH = bodyLines.length * 5;
 
     // SmartSpacing: define all sections
@@ -3446,16 +3819,16 @@ async function generateAcceptanceLetter(data) {
     sigY += 5;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("Joseph Ochieng", margin + 5, sigY);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin + 5, sigY);
 
     sigY += 5;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin + 5, sigY);
+    if (company.signatoryTitle) { doc.text(company.signatoryTitle, margin + 5, sigY); sigY += 6; }
+    else { sigY += 1; }
 
-    sigY += 6;
     doc.setFontSize(8);
     doc.setTextColor(...Colors.textMuted);
-    doc.text("Tel: +254 769 157174", margin + 5, sigY);
+    doc.text(`Tel: ${company.phone || ''}`, margin + 5, sigY);
 
     yPos = SmartSpacing.advance(yPos, 32, layout, si++, doc, onNewPage);
 
@@ -3482,7 +3855,9 @@ async function generatePaymentRequest(data, paymentDetails) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('payment');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
     const onNewPage = () => { addProfessionalHeader(doc, 'PAYMENT REQUEST'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PAYMENT REQUEST');
@@ -3622,10 +3997,10 @@ async function generatePaymentRequest(data, paymentDetails) {
     yPos += 4;
 
     doc.setFont("helvetica", "bold");
-    doc.text("Joseph Ochieng", margin, yPos);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin, yPos);
     yPos += 4;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin, yPos);
+    if (company.signatoryTitle) doc.text(company.signatoryTitle, margin, yPos);
 
     // Gap: signature -> seal (keepWithNext keeps them together)
     yPos = SmartSpacing.advance(signatureStartY, 20, postLayout, pi++, doc, onNewPage);
@@ -3654,6 +4029,7 @@ async function generateInvoice(data, invoiceDetails) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('invoice');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
     const onNewPage = () => { addProfessionalHeader(doc, 'INVOICE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'INVOICE');
@@ -3753,9 +4129,9 @@ async function generateInvoice(data, invoiceDetails) {
             0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
             2: { cellWidth: 20, halign: 'center' },
-            3: { cellWidth: 18, halign: 'right' },
-            4: { cellWidth: 34, halign: 'right' },
-            5: { cellWidth: 34, halign: 'right' }
+            3: { cellWidth: 16, halign: 'right' },
+            4: { cellWidth: 38, halign: 'right' },
+            5: { cellWidth: 38, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -3870,7 +4246,9 @@ async function generateDeliveryNote(data) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('delivery');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0 });
     const lastInvoice = DocumentRegistry.getLastDocument('invoice');
     const onNewPage = () => { addProfessionalHeader(doc, 'DELIVERY NOTE'); addProfessionalFooter(doc); };
 
@@ -3983,10 +4361,10 @@ async function generateDeliveryNote(data) {
 
     yPos += 4;
     doc.setFont("helvetica", "bold");
-    doc.text("Joseph Ochieng", margin, yPos);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin, yPos);
     yPos += 4;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin, yPos);
+    if (company.signatoryTitle) doc.text(company.signatoryTitle, margin, yPos);
 
     // Gap: signature -> seal (keepWithNext keeps them together)
     yPos = SmartSpacing.advance(signatureStartY, 25, postLayout, pi++, doc, onNewPage);
@@ -4013,6 +4391,7 @@ async function generateContractAgreement(data) {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
+    const company = CompanyManager.getActive();
     let pageNum = 1;
 
     function addHeader() {
@@ -4024,6 +4403,7 @@ async function generateContractAgreement(data) {
     }
 
     const documentNumber = DocumentRegistry.generateNumber('contract');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
     const onNewPage = () => { pageNum++; addHeader(); addFooter(); };
 
     addHeader();
@@ -4161,7 +4541,7 @@ async function generateContractAgreement(data) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.text("Signature & Date", margin + 5, yPos + 23);
-    doc.text("Joseph Ochieng - Director/Operations Manager", margin + 5, yPos + 28);
+    doc.text(`${company.signatoryName || 'Authorized Signatory'}${company.signatoryTitle ? ' - ' + company.signatoryTitle : ''}`, margin + 5, yPos + 28);
 
     // Client signature
     doc.setFont("helvetica", "bold");
@@ -4198,7 +4578,9 @@ async function generateRecommendationLetter(data) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('recommendation');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0 });
     const onNewPage = () => { addProfessionalHeader(doc, 'RECOMMENDATION'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECOMMENDATION');
@@ -4220,7 +4602,7 @@ async function generateRecommendationLetter(data) {
     let bodyH = 0;
     bodyParagraphs.forEach(para => {
         if (para === "") { bodyH += 3; }
-        else { bodyH += doc.splitTextToSize(para, pageWidth - (2 * margin)).length * 5; }
+        else { bodyH += doc.splitTextToSize(para, pageWidth - (2 * margin) - 5).length * 5; }
     });
 
     // SmartSpacing: define all sections
@@ -4270,7 +4652,7 @@ async function generateRecommendationLetter(data) {
         if (para === "") {
             yPos += 3;
         } else {
-            const lines = doc.splitTextToSize(para, pageWidth - (2 * margin));
+            const lines = doc.splitTextToSize(para, pageWidth - (2 * margin) - 5);
             doc.text(lines, margin, yPos);
             yPos += (lines.length * 5);
         }
@@ -4290,10 +4672,10 @@ async function generateRecommendationLetter(data) {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.text("Joseph Ochieng", margin, yPos);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin, yPos);
     yPos += 5;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin, yPos);
+    if (company.signatoryTitle) doc.text(company.signatoryTitle, margin, yPos);
 
     yPos = SmartSpacing.advance(signatureStartY, 15, layout, si++, doc, onNewPage);
 
@@ -4320,9 +4702,11 @@ async function generateReceipt(data, receiptDetails) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('receipt');
     const totals = calculateTotals(data);
     const amountPaid = receiptDetails.amountPaid ? parseFloat(receiptDetails.amountPaid) : totals.total;
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: amountPaid });
     const onNewPage = () => { addProfessionalHeader(doc, 'RECEIPT'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECEIPT');
@@ -4430,10 +4814,10 @@ async function generateReceipt(data, receiptDetails) {
     doc.text("Authorized Signature", margin, yPos);
     yPos += 5;
     doc.setFont("helvetica", "bold");
-    doc.text("Joseph Ochieng", margin, yPos);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin, yPos);
     yPos += 4;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin, yPos);
+    if (company.signatoryTitle) doc.text(company.signatoryTitle, margin, yPos);
 
     yPos = SmartSpacing.advance(signatureStartY, 26, layout, si++, doc, onNewPage);
 
@@ -4460,7 +4844,9 @@ async function generateLPO(data, lpoDetails) {
     const pageWidth = doc.internal.pageSize.width;
     const margin = 15;
 
+    const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('lpo');
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName || lpoDetails.supplierName || '', amount: calculateTotals(data).total });
     const onNewPage = () => { addProfessionalHeader(doc, 'PURCHASE ORDER'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PURCHASE ORDER');
@@ -4543,10 +4929,10 @@ async function generateLPO(data, lpoDetails) {
         columnStyles: {
             0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 'auto' },
-            2: { cellWidth: 22, halign: 'center' },
-            3: { cellWidth: 22, halign: 'right' },
-            4: { cellWidth: 32, halign: 'right' },
-            5: { cellWidth: 32, halign: 'right' }
+            2: { cellWidth: 20, halign: 'center' },
+            3: { cellWidth: 16, halign: 'right' },
+            4: { cellWidth: 38, halign: 'right' },
+            5: { cellWidth: 38, halign: 'right' }
         },
         margin: { left: margin, right: margin },
         theme: 'grid'
@@ -4598,10 +4984,10 @@ async function generateLPO(data, lpoDetails) {
     doc.text("Signature & Date", margin, yPos);
     yPos += 4;
     doc.setFont("helvetica", "bold");
-    doc.text("Joseph Ochieng", margin, yPos);
+    doc.text(company.signatoryName || 'Authorized Signatory', margin, yPos);
     yPos += 4;
     doc.setFont("helvetica", "normal");
-    doc.text("Director/Operations Manager", margin, yPos);
+    if (company.signatoryTitle) doc.text(company.signatoryTitle, margin, yPos);
 
     // Gap: signature → seal
     yPos = SmartSpacing.advance(signatureStartY, 25, postLayout, pi++, doc, onNewPage);

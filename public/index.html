@@ -887,8 +887,74 @@
     <script src="script/first.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
+            let swRegistration = null;
+            let refreshing = false;
+
+            function hardReset(reason) {
+                if (refreshing) return;
+                refreshing = true;
+                console.log('[PWA] Hard reset triggered:', reason);
+
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,0.95);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+                overlay.innerHTML = `
+                    <div style="width:40px;height:40px;border:3px solid #E5E7EB;border-top-color:#F97316;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px;"></div>
+                    <div style="font-size:1.1rem;font-weight:600;color:#1F2937;">Updating Application</div>
+                    <div style="font-size:0.85rem;color:#6B7280;margin-top:6px;">Clearing cache and refreshing...</div>
+                    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+                `;
+                document.body.appendChild(overlay);
+
+                caches.keys().then(names => {
+                    return Promise.all(names.map(name => caches.delete(name)));
+                }).then(() => {
+                    window.location.href = window.location.pathname + '?_t=' + Date.now();
+                }).catch(() => {
+                    window.location.reload();
+                });
+            }
+
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                hardReset('controllerchange');
+            });
+
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'SW_UPDATED') {
+                    hardReset('sw-message: ' + event.data.version);
+                }
+            });
+
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(() => {});
+                if (window.location.search.includes('_t=')) {
+                    history.replaceState(null, '', window.location.pathname);
+                }
+
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        swRegistration = registration;
+
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                }
+                            });
+                        });
+
+                        setInterval(() => { registration.update(); }, 30 * 60 * 1000);
+                    })
+                    .catch(() => {});
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && swRegistration) {
+                    swRegistration.update();
+                }
+            });
+
+            window.addEventListener('online', () => {
+                if (swRegistration) swRegistration.update();
             });
         }
     </script>
