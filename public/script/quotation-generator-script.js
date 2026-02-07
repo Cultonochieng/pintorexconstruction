@@ -103,7 +103,6 @@ const DEFAULT_COMPANY = {
     logoUrl: null,
     signatoryName: 'Joseph Ochieng',
     signatoryTitle: 'Director/Operations Manager',
-    verificationBaseUrl: 'https://pintorexconstruction.onrender.com',
     bankDetails: {
         bankName: '',
         accountName: 'Pintorex Construction Limited',
@@ -259,8 +258,9 @@ const CompanyManager = {
                 c.signatoryTitle = c.id === 'pintorex' ? 'Director/Operations Manager' : '';
                 changed = true;
             }
-            if (!c.hasOwnProperty('verificationBaseUrl')) {
-                c.verificationBaseUrl = c.id === 'pintorex' ? 'https://pintorexconstruction.onrender.com' : '';
+            // Clean up removed verificationBaseUrl field
+            if (c.hasOwnProperty('verificationBaseUrl')) {
+                delete c.verificationBaseUrl;
                 changed = true;
             }
         });
@@ -933,6 +933,9 @@ const ClientHistory = {
 // ============================================================================
 
 const DocumentRegistry = {
+    _forceNumber: null,
+    _isRedownload: false,
+
     init() {
         if (!localStorage.getItem('pintorex_registry')) {
             localStorage.setItem('pintorex_registry', JSON.stringify({
@@ -943,6 +946,14 @@ const DocumentRegistry = {
     },
 
     generateNumber(type) {
+        // Re-download: return the forced number without creating a new entry
+        if (this._forceNumber) {
+            const num = this._forceNumber;
+            this._forceNumber = null;
+            this._isRedownload = true;
+            return num;
+        }
+        this._isRedownload = false;
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
         const date = new Date();
         const yearMonth = date.getFullYear().toString().slice(-2) +
@@ -991,6 +1002,7 @@ const DocumentRegistry = {
     },
 
     updateLastDocument(extraData) {
+        if (this._isRedownload) return; // Skip during re-download
         const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
         if (registry.documents.length === 0) return;
         const last = registry.documents[registry.documents.length - 1];
@@ -1041,6 +1053,17 @@ const DocumentHistoryPanel = {
         payment: 'Payment Request', delivery: 'Delivery Note', contract: 'Contract',
         recommendation: 'Recommendation', receipt: 'Receipt', lpo: 'Purchase Order'
     },
+    GENERATORS: {
+        quotation: (snap) => generateProfessionalQuotation(snap.data),
+        acceptance: (snap) => generateAcceptanceLetter(snap.data),
+        payment: (snap) => generatePaymentRequest(snap.data, snap.paymentDetails || {}),
+        invoice: (snap) => generateInvoice(snap.data, snap.invoiceDetails || {}),
+        delivery: (snap) => generateDeliveryNote(snap.data),
+        contract: (snap) => generateContractAgreement(snap.data),
+        recommendation: (snap) => generateRecommendationLetter(snap.data),
+        receipt: (snap) => generateReceipt(snap.data, snap.receiptDetails || {}),
+        lpo: (snap) => generateLPO(snap.data, snap.lpoDetails || {})
+    },
 
     open() {
         const overlay = document.getElementById('historyOverlay');
@@ -1058,6 +1081,32 @@ const DocumentHistoryPanel = {
         const panel = document.getElementById('historyPanel');
         if (overlay) overlay.classList.remove('active');
         if (panel) panel.classList.remove('active');
+    },
+
+    async redownload(docNumber, docType, formDataSnapshot) {
+        if (!formDataSnapshot || !formDataSnapshot.data) {
+            Toast.error('Form data not available for this document');
+            return;
+        }
+        const generator = this.GENERATORS[docType];
+        if (!generator) {
+            Toast.error('Unknown document type');
+            return;
+        }
+
+        // Force the generator to use the original document number
+        DocumentRegistry._forceNumber = docNumber;
+
+        try {
+            await generator(formDataSnapshot);
+            Toast.success(`${this.TYPE_NAMES[docType] || 'Document'} re-downloaded`);
+        } catch (e) {
+            console.error('Re-download failed:', e);
+            Toast.error('Failed to re-generate document');
+        } finally {
+            DocumentRegistry._forceNumber = null;
+            DocumentRegistry._isRedownload = false;
+        }
     },
 
     render(filterType) {
@@ -1081,24 +1130,44 @@ const DocumentHistoryPanel = {
             return;
         }
 
-        list.innerHTML = docs.map(doc => {
+        list.innerHTML = docs.map((doc, idx) => {
             const color = this.TYPE_COLORS[doc.type] || '#6B7280';
             const label = this.TYPE_LABELS[doc.type] || '??';
             const typeName = this.TYPE_NAMES[doc.type] || doc.type;
             const dateStr = doc.date ? new Date(doc.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
             const amountStr = doc.amount ? `KES ${numberWithCommas(doc.amount)}` : '';
+            const hasSnapshot = doc.formDataSnapshot && doc.formDataSnapshot.data;
             return `
                 <div class="history-item">
                     <div class="history-type-badge" style="background: ${color};">${label}</div>
                     <div class="history-item-info">
                         <div class="history-item-number">${doc.number}</div>
                         <div class="history-item-client">${doc.clientName || typeName}</div>
-                        <div class="history-item-meta">${dateStr}</div>
+                        <div class="history-item-meta">${dateStr}${amountStr ? ' &middot; ' + amountStr : ''}</div>
                     </div>
-                    ${amountStr ? `<div class="history-item-amount">${amountStr}</div>` : ''}
+                    <button class="history-redownload-btn" data-idx="${idx}" ${!hasSnapshot ? 'disabled title="Data not available"' : `title="Re-download ${typeName}"`}
+                        style="background: none; border: 1px solid ${hasSnapshot ? color : '#D1D5DB'}; color: ${hasSnapshot ? color : '#D1D5DB'}; border-radius: 6px; padding: 6px 10px; cursor: ${hasSnapshot ? 'pointer' : 'default'}; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; transition: all 0.15s; display: flex; align-items: center; gap: 4px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/></svg>
+                        PDF
+                    </button>
                 </div>
             `;
         }).join('');
+
+        // Wire up re-download buttons
+        list.querySelectorAll('.history-redownload-btn:not([disabled])').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const idx = parseInt(e.currentTarget.dataset.idx);
+                const doc = docs[idx];
+                if (!doc) return;
+                e.currentTarget.innerHTML = '<span style="font-size:0.65rem;">...</span>';
+                e.currentTarget.disabled = true;
+                await this.redownload(doc.number, doc.type, doc.formDataSnapshot);
+                // Re-render to reset button state
+                const filterSelect = document.getElementById('historyFilterType');
+                this.render(filterSelect ? filterSelect.value : 'all');
+            });
+        });
     },
 
     init() {
@@ -1707,7 +1776,7 @@ const ModalUI = {
         const company = existingCompany || {
             id: '', name: '', shortName: '', descriptor: '', tagline: '',
             phone: '', email: '', address: '', location: '',
-            signatoryName: '', signatoryTitle: '', verificationBaseUrl: '',
+            signatoryName: '', signatoryTitle: '',
             bankDetails: { bankName: '', accountName: '', accountNumber: '', branch: '' },
             colorTheme: 'corporate-blue', documentPrefix: '', logoUrl: null
         };
@@ -1788,7 +1857,7 @@ const ModalUI = {
                     </div>
                 </div>
                 <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
-                    <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Signatory & Verification</h4>
+                    <h4 style="font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 10px;">Document Signatory</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div>
                             <label class="form-label">Signatory Name</label>
@@ -1798,11 +1867,6 @@ const ModalUI = {
                             <label class="form-label">Signatory Title</label>
                             <input type="text" id="companySignatoryTitle" value="${escVal(company.signatoryTitle)}" class="form-input" placeholder="e.g. Managing Director" maxlength="40">
                         </div>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <label class="form-label">Verification URL</label>
-                        <input type="url" id="companyVerificationUrl" value="${escVal(company.verificationBaseUrl)}" class="form-input" placeholder="https://yoursite.com">
-                        <span style="font-size: 0.7rem; color: #9CA3AF;">QR codes on documents will link to this URL for verification</span>
                     </div>
                 </div>
                 <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
@@ -1934,7 +1998,6 @@ const ModalUI = {
                 documentPrefix: document.getElementById('companyPrefix').value.trim().toUpperCase() || CompanyManager.derivePrefix(name),
                 signatoryName: document.getElementById('companySignatoryName').value.trim(),
                 signatoryTitle: document.getElementById('companySignatoryTitle').value.trim(),
-                verificationBaseUrl: document.getElementById('companyVerificationUrl').value.trim(),
                 logoUrl: pendingLogoUrl
             };
 
@@ -2821,8 +2884,7 @@ function drawCompanySeal(doc, x, y, radius, verificationData) {
     // Render verification QR code elegantly centered inside the seal
     try {
         const docId = verificationData.documentId || generateDocumentUUID(verificationData.docType || 'DOC', verificationData.docNumber || '000');
-        const baseUrl = company.verificationBaseUrl || 'https://pintorexconstruction.onrender.com';
-        const verificationUrl = `${baseUrl}/verify/${docId}`;
+        const verificationUrl = `https://pintorexconstruction.onrender.com/verify/${docId}`;
         const qr = qrcode(0, 'M');
         qr.addData(verificationUrl);
         qr.make();
@@ -3466,7 +3528,7 @@ async function generateProfessionalQuotation(data) {
 
     const quotationNumber = DocumentRegistry.generateNumber('quotation');
     const _qtTotals = calculateTotals(data);
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: _qtTotals.total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: _qtTotals.total, formDataSnapshot: { data } });
 
     // Title
     doc.setTextColor(...Colors.secondary);
@@ -3692,7 +3754,7 @@ async function generateAcceptanceLetter(data) {
 
     const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('acceptance');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total, formDataSnapshot: { data } });
     const onNewPage = () => { addProfessionalHeader(doc, 'ACCEPTANCE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'ACCEPTANCE');
@@ -3857,7 +3919,7 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('payment');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total, formDataSnapshot: { data, paymentDetails } });
     const onNewPage = () => { addProfessionalHeader(doc, 'PAYMENT REQUEST'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PAYMENT REQUEST');
@@ -4029,7 +4091,7 @@ async function generateInvoice(data, invoiceDetails) {
     const margin = 15;
 
     const documentNumber = DocumentRegistry.generateNumber('invoice');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total, formDataSnapshot: { data, invoiceDetails } });
     const onNewPage = () => { addProfessionalHeader(doc, 'INVOICE'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'INVOICE');
@@ -4248,7 +4310,7 @@ async function generateDeliveryNote(data) {
 
     const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('delivery');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0 });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0, formDataSnapshot: { data } });
     const lastInvoice = DocumentRegistry.getLastDocument('invoice');
     const onNewPage = () => { addProfessionalHeader(doc, 'DELIVERY NOTE'); addProfessionalFooter(doc); };
 
@@ -4403,7 +4465,7 @@ async function generateContractAgreement(data) {
     }
 
     const documentNumber = DocumentRegistry.generateNumber('contract');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: calculateTotals(data).total, formDataSnapshot: { data } });
     const onNewPage = () => { pageNum++; addHeader(); addFooter(); };
 
     addHeader();
@@ -4580,7 +4642,7 @@ async function generateRecommendationLetter(data) {
 
     const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('recommendation');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0 });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: 0, formDataSnapshot: { data } });
     const onNewPage = () => { addProfessionalHeader(doc, 'RECOMMENDATION'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECOMMENDATION');
@@ -4706,7 +4768,7 @@ async function generateReceipt(data, receiptDetails) {
     const documentNumber = DocumentRegistry.generateNumber('receipt');
     const totals = calculateTotals(data);
     const amountPaid = receiptDetails.amountPaid ? parseFloat(receiptDetails.amountPaid) : totals.total;
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: amountPaid });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName, amount: amountPaid, formDataSnapshot: { data, receiptDetails } });
     const onNewPage = () => { addProfessionalHeader(doc, 'RECEIPT'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'RECEIPT');
@@ -4846,7 +4908,7 @@ async function generateLPO(data, lpoDetails) {
 
     const company = CompanyManager.getActive();
     const documentNumber = DocumentRegistry.generateNumber('lpo');
-    DocumentRegistry.updateLastDocument({ clientName: data.clientName || lpoDetails.supplierName || '', amount: calculateTotals(data).total });
+    DocumentRegistry.updateLastDocument({ clientName: data.clientName || lpoDetails.supplierName || '', amount: calculateTotals(data).total, formDataSnapshot: { data, lpoDetails } });
     const onNewPage = () => { addProfessionalHeader(doc, 'PURCHASE ORDER'); addProfessionalFooter(doc); };
 
     addProfessionalHeader(doc, 'PURCHASE ORDER');
