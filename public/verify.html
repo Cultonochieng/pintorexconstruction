@@ -232,7 +232,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.3/dist/umd/supabase.min.js" integrity="sha384-aRAaCbKYByQpx0fjPuC0PQ9P9moWMEsHXP9tyzP7tbyD5fPK6oTp+THsxdWiq02L" crossorigin="anonymous"></script>
     <script>
         (async function() {
             const loadingEl = document.getElementById('loading');
@@ -268,7 +268,7 @@
 
                 const { data, error } = await client
                     .from('document_records')
-                    .select('*')
+                    .select('doc_type, doc_number, client_name, amount, date_generated, company_name, company_theme')
                     .eq('document_id', docId)
                     .single();
 

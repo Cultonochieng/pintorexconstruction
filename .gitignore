@@ -35,6 +35,9 @@ ehthumbs.db
 # Claude files
 .claude/
 
+# Sensitive documents (company profiles, contracts, etc.)
+public/docs/
+
 # Temporary files
 tmp/
 temp/

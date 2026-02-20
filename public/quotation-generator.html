@@ -817,15 +817,23 @@
                     <img src="images/logo_pint.png" alt="" class="h-8 sm:h-10 w-auto" aria-hidden="true">
                     <span class="text-lg sm:text-xl md:text-2xl font-bold font-construction text-gray-800 tracking-wide">PINTOREX</span>
                 </a>
-                <nav aria-label="Breadcrumb">
-                    <ol class="flex items-center space-x-2 text-xs sm:text-sm">
-                        <li>
-                            <a href="index.html" class="text-construction-orange hover:text-orange-600 transition">Home</a>
-                        </li>
-                        <li class="text-gray-400" aria-hidden="true">/</li>
-                        <li class="text-gray-600 font-medium" aria-current="page">Quotation Generator</li>
-                    </ol>
-                </nav>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <nav aria-label="Breadcrumb">
+                        <ol class="flex items-center space-x-2 text-xs sm:text-sm">
+                            <li><a href="index.html" class="text-construction-orange hover:text-orange-600 transition">Home</a></li>
+                            <li class="text-gray-400" aria-hidden="true">/</li>
+                            <li class="text-gray-600 font-medium" aria-current="page">Quotations</li>
+                        </ol>
+                    </nav>
+                    <a href="employee-management.html" class="btn btn-outline btn-sm hidden sm:inline-flex" style="font-size:0.75rem;padding:5px 12px">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+                        Employees
+                    </a>
+                    <a href="stock-management.html" class="btn btn-outline btn-sm hidden sm:inline-flex" style="font-size:0.75rem;padding:5px 12px">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+                        Stock
+                    </a>
+                </div>
             </div>
         </div>
     </header>
@@ -1143,8 +1151,8 @@
     <script src="script/lib/jspdf.umd.min.js"></script>
     <script src="script/lib/jspdf.plugin.autotable.min.js"></script>
     <script src="script/lib/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.95.3/dist/umd/supabase.min.js" integrity="sha384-aRAaCbKYByQpx0fjPuC0PQ9P9moWMEsHXP9tyzP7tbyD5fPK6oTp+THsxdWiq02L" crossorigin="anonymous"></script>
     <script src="script/quotation-generator-script.js"></script>
 
     <!-- Offline Status Indicator -->

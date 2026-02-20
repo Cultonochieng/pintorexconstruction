@@ -13,8 +13,16 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy for Render
-app.set('trust proxy', 1);
+// Require SESSION_SECRET — refuse to start with an insecure default
+if (!process.env.SESSION_SECRET) {
+    console.error('FATAL: SESSION_SECRET environment variable is not set. Create a .env file with a strong random secret.');
+    process.exit(1);
+}
+
+// Trust proxy only in production (behind Render's reverse proxy)
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
 
 // Security headers with helmet (configured for our needs)
 app.use(helmet({
@@ -54,8 +62,8 @@ app.use(helmet({
 // CORS configuration
 app.use(cors({
     origin: process.env.NODE_ENV === 'production'
-        ? ['https://pintorexconstruction.onrender.com', 'https://pintorexconstruction.onrender.com']
-        : true,
+        ? ['https://pintorexconstruction.onrender.com']
+        : ['http://localhost:3000'],
     credentials: true
 }));
 
@@ -79,13 +87,13 @@ const generalLimiter = rateLimit({
 app.use(generalLimiter);
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
 // Session configuration
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'pintorex-dev-secret-change-in-production',
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -133,7 +141,7 @@ app.post('/api/auth/verify', authLimiter, async (req, res) => {
 
             // Generate offline access token for PWA (valid 30 days)
             const offlineExpiry = Date.now() + (30 * 24 * 60 * 60 * 1000);
-            const secret = process.env.SESSION_SECRET || 'pintorex-dev-secret-change-in-production';
+            const secret = process.env.SESSION_SECRET;
             const tokenData = `pintorex-offline:${offlineExpiry}`;
             const signature = crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
             const offlineToken = Buffer.from(JSON.stringify({
@@ -173,7 +181,7 @@ app.post('/api/auth/validate-offline-token', (req, res) => {
         const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
         if (Date.now() > decoded.exp) return res.json({ valid: false });
 
-        const secret = process.env.SESSION_SECRET || 'pintorex-dev-secret-change-in-production';
+        const secret = process.env.SESSION_SECRET;
         const tokenData = `pintorex-offline:${decoded.exp}`;
         const expectedSig = crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
 
@@ -248,9 +256,9 @@ app.post('/api/contact', rateLimit({
             return res.status(400).json({ error: 'Invalid email address' });
         }
 
-        // Log the contact submission (in production, send email via EmailJS on client-side)
-        console.log('Contact form submission:', {
-            ...sanitizedData,
+        // Log submission receipt (no PII in logs)
+        console.log('Contact form submission received:', {
+            projectType: sanitizedData.projectType,
             timestamp: new Date().toISOString()
         });
 
@@ -287,14 +295,28 @@ app.get('/quotation-generator', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'quotation-generator.html'));
 });
 
+// Serve employee management system
+app.get('/employee-management', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'employee-management.html'));
+});
+
+// Serve stock management system
+app.get('/stock-management', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'stock-management.html'));
+});
+
 // Document verification page (QR code scans)
 app.get('/verify/:id', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'verify.html'));
 });
 
-// Handle 404 - serve index.html for SPA-like behavior
+// Handle 404 - minimal response to avoid serving full index.html on probes
 app.use((req, res) => {
-    res.status(404).sendFile(path.join(__dirname, 'public', 'index.html'));
+    if (req.accepts('html')) {
+        res.status(404).send('<!DOCTYPE html><html><head><title>404</title></head><body><h1>Page Not Found</h1><p><a href="/">Return to Pintorex Construction</a></p></body></html>');
+    } else {
+        res.status(404).json({ error: 'Not found' });
+    }
 });
 
 // Error handler

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Management | Pintorex</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/png" href="images/logo_pint.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#F97316">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="script/lib/tailwind.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+    <style>
+        :root {
+            --color-primary: #F97316;
+            --color-primary-hover: #EA580C;
+            --color-primary-light: #FED7AA;
+            --color-secondary: #1F2937;
+            --color-secondary-hover: #374151;
+            --color-text: #111827;
+            --color-text-muted: #6B7280;
+            --color-subtle: #F9FAFB;
+            --color-success: #10B981;
+            --color-success-hover: #059669;
+            --color-error: #EF4444;
+            --color-warning: #F59E0B;
+            --color-border: #D1D5DB;
+        }
+        body { font-family: 'Roboto', sans-serif; }
+        h1,h2,h3,h4 { font-family: 'Oswald', sans-serif; }
+        .font-construction { font-family: 'Oswald', sans-serif; }
+
+        /* Layout: sidebar + content */
+        .app-shell { display: flex; min-height: calc(100vh - 60px); }
+        .sidebar { width: 220px; flex-shrink: 0; background: var(--color-secondary); }
+        .content-area { flex: 1; overflow-x: hidden; padding: 24px; }
+        @media(max-width:768px) {
+            .app-shell { flex-direction: column; }
+            .sidebar { width: 100%; display: flex; flex-direction: row; overflow-x: auto; }
+            .sidebar-nav { display: flex; flex-direction: row; padding: 0; }
+            .sidebar-item { padding: 12px 16px !important; border-left: none !important; border-bottom: 3px solid transparent; white-space: nowrap; }
+            .sidebar-item.active { border-left: none !important; border-bottom-color: var(--color-primary) !important; }
+            .sidebar-logo { display: none; }
+            .content-area { padding: 16px; }
+        }
+        .sidebar-logo { padding: 20px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .sidebar-nav { padding: 12px 0; }
+        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px; color: rgba(255,255,255,0.65); cursor: pointer; transition: all 0.2s; font-size: 0.8125rem; font-weight: 500; border-left: 3px solid transparent; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.06); color: white; }
+        .sidebar-item.active { background: rgba(249,115,22,0.15); color: var(--color-primary); border-left-color: var(--color-primary); }
+        .sidebar-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .sidebar-section-label { padding: 12px 20px 4px; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); text-transform: uppercase; font-family: 'Oswald', sans-serif; }
+
+        /* Business toggle */
+        .biz-toggle { display: flex; background: rgba(255,255,255,0.07); border-radius: 8px; padding: 4px; margin: 0 12px 16px; }
+        .biz-btn { flex: 1; padding: 7px 6px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-align: center; cursor: pointer; transition: all 0.2s; color: rgba(255,255,255,0.5); font-family: 'Oswald', sans-serif; letter-spacing: 0.03em; border: none; background: none; }
+        .biz-btn.active { background: var(--color-primary); color: white; box-shadow: 0 2px 8px rgba(249,115,22,0.4); }
+
+        /* Stat cards */
+        .stat-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .stat-value { font-size: 1.6rem; font-weight: 700; font-family: 'Oswald', sans-serif; color: var(--color-secondary); line-height: 1; }
+        .stat-label { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px; font-weight: 500; }
+        .stat-trend { font-size: 0.75rem; margin-top: 6px; font-weight: 600; }
+
+        /* Alert banner */
+        .alert-banner { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 12px; }
+        .alert-banner svg { width: 20px; height: 20px; color: #D97706; flex-shrink: 0; }
+        .alert-banner-text { font-size: 0.8125rem; color: #92400E; font-weight: 500; }
+        .alert-critical { background: #FEE2E2; border-color: #FECACA; }
+        .alert-critical svg { color: #DC2626; }
+        .alert-critical .alert-banner-text { color: #991B1B; }
+
+        /* Form elements */
+        .form-input { width: 100%; padding: 9px 13px; border-radius: 8px; border: 1px solid var(--color-border); background: white; color: var(--color-text); font-size: 0.875rem; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); outline: none; }
+        .form-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--color-secondary); margin-bottom: 5px; }
+        .required-field::after { content: " *"; color: var(--color-error); }
+        .calc-field { background: #F0FDF4; border-color: #A7F3D0; color: #065F46; font-weight: 600; }
+
+        /* Buttons */
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; border-radius: 8px; font-weight: 600; transition: all 0.2s; cursor: pointer; border: none; font-size: 0.875rem; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: var(--color-primary); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+        .btn-secondary { background: var(--color-secondary); color: white; }
+        .btn-secondary:hover:not(:disabled) { background: var(--color-secondary-hover); }
+        .btn-success { background: var(--color-success); color: white; }
+        .btn-success:hover:not(:disabled) { background: var(--color-success-hover); }
+        .btn-danger { background: var(--color-error); color: white; }
+        .btn-danger:hover:not(:disabled) { background: #DC2626; }
+        .btn-outline { background: white; color: var(--color-secondary); border: 1px solid var(--color-border); }
+        .btn-outline:hover:not(:disabled) { background: var(--color-subtle); }
+        .btn-sm { padding: 6px 12px; font-size: 0.8125rem; }
+        .btn-xs { padding: 4px 9px; font-size: 0.75rem; border-radius: 6px; }
+        .btn-lg { padding: 12px 24px; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 16px; }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: white; border-radius: 14px; padding: 26px; max-width: 620px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+        .modal-title { font-size: 1.2rem; color: var(--color-secondary); margin-bottom: 2px; }
+        .modal-sub { font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 18px; }
+
+        /* Table */
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: var(--color-subtle); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--color-border); font-family: 'Oswald', sans-serif; white-space: nowrap; }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid #F3F4F6; font-size: 0.8125rem; color: var(--color-text); vertical-align: middle; }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: #FFFBF7; }
+        .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--color-border); }
+
+        /* Stock status badges */
+        .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; gap: 4px; }
+        .badge-ok { background: #D1FAE5; color: #065F46; }
+        .badge-low { background: #FEF3C7; color: #92400E; }
+        .badge-out { background: #FEE2E2; color: #991B1B; }
+        .badge-in { background: #DBEAFE; color: #1E40AF; }
+        .badge-sale { background: #EDE9FE; color: #5B21B6; }
+        .badge-dmg { background: #FFE4E6; color: #9F1239; }
+        .badge-adj { background: #F3F4F6; color: #374151; }
+        .badge-cat { background: #F0F9FF; color: #0369A1; border: 1px solid #BAE6FD; font-size: 0.68rem; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 80px; right: 20px; padding: 14px 22px; border-radius: 8px; color: white; font-weight: 500; z-index: 99999; transform: translateY(100px); opacity: 0; transition: all 0.3s ease; max-width: 340px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: var(--color-success); }
+        .toast.error { background: var(--color-error); }
+        .toast.info { background: var(--color-primary); }
+
+        /* Spinner */
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid var(--color-primary); border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Section card */
+        .section-card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+        .section-header { padding: 16px 20px; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .section-body { padding: 20px; }
+
+        /* Search bar */
+        .search-bar { position: relative; }
+        .search-bar input { padding-left: 36px; }
+        .search-bar svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--color-text-muted); pointer-events: none; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 50px 20px; }
+        .empty-state svg { width: 52px; height: 52px; color: #D1D5DB; margin: 0 auto 14px; }
+        .empty-state h3 { font-size: 1rem; color: var(--color-secondary); margin-bottom: 6px; }
+        .empty-state p { color: var(--color-text-muted); font-size: 0.8125rem; }
+
+        /* Smart margin display */
+        .margin-pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; }
+        .margin-high { background: #D1FAE5; color: #065F46; }
+        .margin-med { background: #FEF3C7; color: #92400E; }
+        .margin-low { background: #FEE2E2; color: #991B1B; }
+
+        /* Progress bar for stock level */
+        .stock-bar { height: 5px; border-radius: 3px; background: #E5E7EB; overflow: hidden; margin-top: 4px; }
+        .stock-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+        /* Chart bars (CSS only) */
+        .chart-container { display: flex; align-items: flex-end; gap: 8px; height: 100px; padding: 0 4px; }
+        .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .chart-bar { width: 100%; border-radius: 4px 4px 0 0; background: var(--color-primary); opacity: 0.8; min-height: 4px; transition: height 0.4s; }
+        .chart-label { font-size: 0.6rem; color: var(--color-text-muted); text-align: center; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+
+        /* Transaction type icon */
+        .tx-type { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 0.8rem; }
+        .tx-in { color: #059669; }
+        .tx-out { color: #DC2626; }
+        .tx-adj { color: #6B7280; }
+
+        /* Session indicator */
+        .session-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); display: inline-block; }
+
+        /* Low stock row highlight */
+        .row-low { background: #FFFBEB !important; }
+        .row-out { background: #FFF1F2 !important; }
+
+        /* View panel */
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<div id="toast" class="toast" role="alert" aria-live="assertive"></div>
+
+<!-- HEADER -->
+<header class="bg-white shadow-sm sticky top-0 z-50" style="height:60px">
+    <div class="max-w-full px-4 h-full flex items-center justify-between gap-4">
+        <a href="index.html" class="flex items-center gap-2 hover:opacity-90 transition flex-shrink-0">
+            <img src="images/logo_pint.png" alt="Pintorex" class="h-8 w-auto">
+            <span class="text-lg font-bold font-construction text-gray-800 tracking-wide hidden sm:block">PINTOREX</span>
+        </a>
+        <h1 class="text-base font-bold font-construction text-gray-700 tracking-wide">STOCK MANAGEMENT</h1>
+        <div class="flex items-center gap-3">
+            <span class="hidden md:flex items-center gap-2 text-xs text-gray-500">
+                <span class="session-dot" id="sessionDot"></span>
+                <span id="sessionLabel">Checking...</span>
+            </span>
+            <a href="quotation-generator.html" class="btn btn-outline btn-sm hidden sm:inline-flex">Quotations</a>
+            <a href="employee-management.html" class="btn btn-outline btn-sm hidden sm:inline-flex">Employees</a>
+            <button id="logoutBtn" class="btn btn-secondary btn-sm">Logout</button>
+        </div>
+    </div>
+</header>
+
+<!-- LOGIN GATE -->
+<div id="loginGate" class="max-w-md mx-auto mt-16 bg-white p-8 rounded-xl shadow-md hidden">
+    <div class="text-center mb-6">
+        <img src="images/logo_pint.png" alt="Pintorex" class="h-16 w-auto mx-auto mb-4">
+        <p class="text-gray-600 font-medium">Enter password to access Stock Management</p>
+    </div>
+    <form id="loginForm" class="space-y-4" novalidate>
+        <div>
+            <label for="loginPassword" class="form-label">Password</label>
+            <input type="password" id="loginPassword" class="form-input" autocomplete="current-password" required>
+            <p id="loginError" class="text-red-500 text-sm mt-2 hidden"></p>
+        </div>
+        <button type="submit" id="loginBtn" class="btn btn-primary w-full btn-lg">
+            <span id="loginText">Login</span>
+            <span id="loginSpinner" class="hidden"><span class="spinner mr-2"></span>Verifying...</span>
+        </button>
+    </form>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" class="hidden">
+    <div class="app-shell">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="text-white font-construction text-sm font-bold tracking-wider mb-2">BUSINESS</div>
+                <div class="biz-toggle">
+                    <button class="biz-btn active" id="bizHardware" onclick="switchBusiness('hardware')">
+                        <div>🔨</div><div>Hardware</div>
+                    </button>
+                    <button class="biz-btn" id="bizClub" onclick="switchBusiness('club')">
+                        <div>🍺</div><div>Club</div>
+                    </button>
+                </div>
+                <div class="text-center">
+                    <span id="bizLabel" class="text-orange-400 text-xs font-bold font-construction tracking-widest">HARDWARE STORE</span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-label">Navigation</div>
+                <div class="sidebar-item active" data-view="dashboard" onclick="switchView('dashboard')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+                    Dashboard
+                </div>
+                <div class="sidebar-item" data-view="inventory" onclick="switchView('inventory')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+                    Inventory
+                </div>
+                <div class="sidebar-item" data-view="transactions" onclick="switchView('transactions')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+                    Transactions
+                </div>
+                <div class="sidebar-item" data-view="reports" onclick="switchView('reports')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                    Reports
+                </div>
+            </nav>
+        </aside>
+
+        <!-- CONTENT -->
+        <main class="content-area">
+
+            <!-- VIEW: DASHBOARD -->
+            <div id="view-dashboard" class="view-panel active">
+                <div class="flex items-center justify-between mb-5">
+                    <div>
+                        <h2 class="font-construction text-2xl text-gray-800" id="dashBizTitle">HARDWARE STORE DASHBOARD</h2>
+                        <p class="text-sm text-gray-500" id="dashSubtitle">Real-time inventory overview</p>
+                    </div>
+                    <button onclick="switchView('inventory');openItemModal()" class="btn btn-primary btn-sm">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                        Add Stock Item
+                    </button>
+                </div>
+
+                <!-- Stat cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dashTotal">0</div>
+                        <div class="stat-label">Total Items</div>
+                    </div>
+                    <div class="stat-card" style="border-top:3px solid #EF4444">
+                        <div class="stat-value text-red-600" id="dashLow">0</div>
+                        <div class="stat-label">Low / Out of Stock</div>
+                        <button class="text-red-500 text-xs mt-1 font-semibold hover:underline" onclick="switchView('inventory');document.getElementById('filterLowStock').value='low';renderInventoryTable()">View alerts →</button>
+                    </div>
+                    <div class="stat-card" style="border-top:3px solid #3B82F6">
+                        <div class="stat-value" id="dashCostValue">KES 0</div>
+                        <div class="stat-label">Stock Cost Value</div>
+                    </div>
+                    <div class="stat-card" style="border-top:3px solid #10B981">
+                        <div class="stat-value" id="dashRevenueValue">KES 0</div>
+                        <div class="stat-label">Revenue Potential</div>
+                    </div>
+                    <div class="stat-card" style="border-top:3px solid #F97316">
+                        <div class="stat-value text-orange-600" id="dashProfitPct">0%</div>
+                        <div class="stat-label">Est. Profit Margin</div>
+                    </div>
+                </div>
+
+                <!-- Alerts -->
+                <div id="lowStockAlerts" class="mb-6 space-y-2"></div>
+
+                <!-- Two-column: chart + recent tx -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Category breakdown -->
+                    <div class="section-card">
+                        <div class="section-header">
+                            <h3 class="font-construction text-sm text-gray-700">STOCK VALUE BY CATEGORY</h3>
+                        </div>
+                        <div class="section-body">
+                            <div class="chart-container" id="categoryChart"></div>
+                            <div id="categoryLegend" class="flex flex-wrap gap-2 mt-3"></div>
+                        </div>
+                    </div>
+                    <!-- Recent Transactions -->
+                    <div class="section-card">
+                        <div class="section-header">
+                            <h3 class="font-construction text-sm text-gray-700">RECENT TRANSACTIONS</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="data-table">
+                                <thead><tr><th>Item</th><th>Type</th><th>Qty</th><th>Date</th></tr></thead>
+                                <tbody id="dashRecentTx"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: INVENTORY -->
+            <div id="view-inventory" class="view-panel">
+                <div class="section-card">
+                    <div class="section-header">
+                        <h2 class="font-construction text-lg text-gray-800" id="invTitle">HARDWARE INVENTORY</h2>
+                        <div class="flex gap-3 flex-wrap items-center">
+                            <div class="search-bar">
+                                <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 20.803z"/></svg>
+                                <input type="text" id="invSearch" class="form-input" placeholder="Search items..." style="padding-left:34px;min-width:180px" oninput="renderInventoryTable()">
+                            </div>
+                            <select id="filterCategory" class="form-input" style="width:auto;min-width:140px" onchange="renderInventoryTable()">
+                                <option value="">All Categories</option>
+                            </select>
+                            <select id="filterLowStock" class="form-input" style="width:auto" onchange="renderInventoryTable()">
+                                <option value="">All Stock</option>
+                                <option value="low">Low / Out Only</option>
+                            </select>
+                            <button onclick="openItemModal()" class="btn btn-primary btn-sm">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                                Add Item
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th><th>Item Name</th><th>Category</th><th>Unit</th>
+                                    <th>Qty</th><th>Min Level</th><th>Cost (KES)</th><th>Selling (KES)</th>
+                                    <th>Margin</th><th>Stock Value</th><th>Status</th><th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="invEmpty" class="empty-state hidden">
+                        <svg fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+                        <h3>No stock items yet</h3>
+                        <p>Click "Add Item" to start tracking inventory.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: TRANSACTIONS -->
+            <div id="view-transactions" class="view-panel">
+                <div class="section-card">
+                    <div class="section-header">
+                        <h2 class="font-construction text-lg text-gray-800" id="txTitle">TRANSACTION LOG</h2>
+                        <div class="flex gap-3 flex-wrap items-center">
+                            <select id="txTypeFilter" class="form-input" style="width:auto" onchange="renderTransactionsTable()">
+                                <option value="">All Types</option>
+                                <option value="Restock">Restock (IN)</option>
+                                <option value="Sale">Sale (OUT)</option>
+                                <option value="Damage">Damage/Wastage</option>
+                                <option value="Adjustment">Adjustment</option>
+                            </select>
+                            <input type="date" id="txDateFrom" class="form-input" style="width:auto" onchange="renderTransactionsTable()">
+                            <input type="date" id="txDateTo" class="form-input" style="width:auto" onchange="renderTransactionsTable()">
+                            <button onclick="openTransactionModal()" class="btn btn-primary btn-sm">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                                New Transaction
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr><th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Unit Price</th><th>Total Value</th><th>Balance</th><th>Reference</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="transactionsBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="txEmpty" class="empty-state hidden">
+                        <svg fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+                        <h3>No transactions yet</h3>
+                        <p>Click "New Transaction" to record stock movement.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: REPORTS -->
+            <div id="view-reports" class="view-panel">
+                <h2 class="font-construction text-2xl text-gray-800 mb-5" id="reportsTitle">REPORTS</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="section-card">
+                        <div class="section-header"><h3 class="font-construction text-sm text-gray-700">INVENTORY REPORT</h3></div>
+                        <div class="section-body space-y-3">
+                            <p class="text-sm text-gray-500">Full stock list with values, margins, and status.</p>
+                            <select id="rptCatFilter" class="form-input">
+                                <option value="">All Categories</option>
+                            </select>
+                            <button onclick="generateInventoryPDF()" class="btn btn-secondary w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                                Export Inventory PDF
+                            </button>
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <div class="section-header"><h3 class="font-construction text-sm text-gray-700">LOW STOCK REPORT</h3></div>
+                        <div class="section-body space-y-3">
+                            <p class="text-sm text-gray-500">Items below minimum threshold with suggested restock quantities.</p>
+                            <button onclick="generateLowStockPDF()" class="btn btn-danger w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                                Export Low Stock PDF
+                            </button>
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <div class="section-header"><h3 class="font-construction text-sm text-gray-700">TRANSACTION REPORT</h3></div>
+                        <div class="section-body space-y-3">
+                            <p class="text-sm text-gray-500">Sales and restocking history for a date range.</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="form-label">From</label><input type="date" id="rptTxFrom" class="form-input"></div>
+                                <div><label class="form-label">To</label><input type="date" id="rptTxTo" class="form-input"></div>
+                            </div>
+                            <select id="rptTxType" class="form-input">
+                                <option value="">All Types</option>
+                                <option value="Restock">Restock Only</option>
+                                <option value="Sale">Sales Only</option>
+                            </select>
+                            <button onclick="generateTransactionPDF()" class="btn btn-primary w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                                Export Transaction PDF
+                            </button>
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <div class="section-header"><h3 class="font-construction text-sm text-gray-700">PROFIT ANALYSIS</h3></div>
+                        <div class="section-body space-y-3">
+                            <p class="text-sm text-gray-500">Cost vs. revenue potential breakdown by category.</p>
+                            <button onclick="generateProfitPDF()" class="btn btn-success w-full">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941"/></svg>
+                                Export Profit Analysis PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live analysis table -->
+                <div class="section-card mt-6">
+                    <div class="section-header"><h3 class="font-construction text-sm text-gray-700">LIVE CATEGORY ANALYSIS</h3></div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead><tr><th>Category</th><th>Items</th><th>Cost Value</th><th>Revenue Potential</th><th>Potential Profit</th><th>Margin %</th></tr></thead>
+                            <tbody id="profitAnalysisBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- ===== ITEM MODAL ===== -->
+<div id="itemModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+        <div class="flex items-center justify-between mb-1">
+            <h3 id="itemModalTitle" class="modal-title font-construction">ADD STOCK ITEM</h3>
+            <button onclick="closeItemModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <p class="modal-sub">Enter item details — margins are calculated automatically</p>
+        <form id="itemForm" novalidate>
+            <input type="hidden" id="itemId">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2">
+                    <label class="form-label required-field">Item Name</label>
+                    <input type="text" id="itemName" class="form-input" placeholder="e.g. OPC Cement 50kg" required>
+                </div>
+                <div>
+                    <label class="form-label required-field">Category</label>
+                    <select id="itemCategory" class="form-input" required></select>
+                </div>
+                <div>
+                    <label class="form-label">SKU / Code</label>
+                    <input type="text" id="itemSku" class="form-input bg-gray-50" placeholder="Auto-generated" readonly>
+                </div>
+                <div>
+                    <label class="form-label required-field">Unit</label>
+                    <select id="itemUnit" class="form-input" required>
+                        <option value="pcs">Pieces (pcs)</option>
+                        <option value="bag">Bag</option>
+                        <option value="bottle">Bottle</option>
+                        <option value="crate">Crate</option>
+                        <option value="kg">Kilogram (kg)</option>
+                        <option value="litre">Litre</option>
+                        <option value="m²">Square Metre (m²)</option>
+                        <option value="m³">Cubic Metre (m³)</option>
+                        <option value="roll">Roll</option>
+                        <option value="set">Set</option>
+                        <option value="tin">Tin</option>
+                        <option value="tonne">Tonne</option>
+                        <option value="length">Length</option>
+                        <option value="pair">Pair</option>
+                        <option value="carton">Carton</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label required-field">Current Quantity</label>
+                    <input type="number" id="itemQty" class="form-input" placeholder="0" min="0" step="0.01" required oninput="calcItemMargin()">
+                </div>
+                <div>
+                    <label class="form-label required-field">Minimum Threshold (Reorder Level)</label>
+                    <input type="number" id="itemMinQty" class="form-input" placeholder="e.g. 10" min="0" step="0.01" required>
+                </div>
+                <div>
+                    <label class="form-label required-field">Cost Price (KES)</label>
+                    <input type="number" id="itemCost" class="form-input" placeholder="0.00" min="0" step="0.01" required oninput="calcItemMargin()">
+                </div>
+                <div>
+                    <label class="form-label required-field">Selling Price (KES)</label>
+                    <input type="number" id="itemSell" class="form-input" placeholder="0.00" min="0" step="0.01" required oninput="calcItemMargin()">
+                </div>
+                <div>
+                    <label class="form-label">Profit Margin</label>
+                    <input type="text" id="itemMarginDisplay" class="form-input calc-field" readonly placeholder="Auto-calculated">
+                </div>
+                <div>
+                    <label class="form-label">Stock Value (at Cost)</label>
+                    <input type="text" id="itemValueDisplay" class="form-input calc-field" readonly placeholder="Auto-calculated">
+                </div>
+                <div>
+                    <label class="form-label">Supplier Name</label>
+                    <input type="text" id="itemSupplier" class="form-input" placeholder="Supplier name">
+                </div>
+                <div>
+                    <label class="form-label">Supplier Phone</label>
+                    <input type="text" id="itemSupplierPhone" class="form-input" placeholder="Phone number">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="form-label">Notes</label>
+                    <textarea id="itemNotes" class="form-input" rows="2" placeholder="Any additional notes..."></textarea>
+                </div>
+            </div>
+            <div class="flex gap-3 justify-end mt-5">
+                <button type="button" onclick="closeItemModal()" class="btn btn-outline">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                    Save Item
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== TRANSACTION MODAL ===== -->
+<div id="transactionModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box">
+        <div class="flex items-center justify-between mb-1">
+            <h3 class="modal-title font-construction">RECORD TRANSACTION</h3>
+            <button onclick="closeTransactionModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <p class="modal-sub">Record stock in, out, or adjustment — stock quantities update automatically</p>
+        <form id="transactionForm" novalidate>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2">
+                    <label class="form-label required-field">Transaction Type</label>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <label class="cursor-pointer"><input type="radio" name="txType" value="Restock" checked onchange="onTxTypeChange()" class="sr-only peer">
+                            <div class="text-center p-3 rounded-lg border-2 border-gray-200 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition">
+                                <div class="text-lg">📦</div><div class="text-xs font-bold text-blue-700">Restock</div><div class="text-xs text-gray-400">Stock IN</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer"><input type="radio" name="txType" value="Sale" onchange="onTxTypeChange()" class="sr-only peer">
+                            <div class="text-center p-3 rounded-lg border-2 border-gray-200 peer-checked:border-purple-500 peer-checked:bg-purple-50 transition">
+                                <div class="text-lg">💰</div><div class="text-xs font-bold text-purple-700">Sale</div><div class="text-xs text-gray-400">Stock OUT</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer"><input type="radio" name="txType" value="Damage" onchange="onTxTypeChange()" class="sr-only peer">
+                            <div class="text-center p-3 rounded-lg border-2 border-gray-200 peer-checked:border-red-500 peer-checked:bg-red-50 transition">
+                                <div class="text-lg">⚠️</div><div class="text-xs font-bold text-red-700">Damage</div><div class="text-xs text-gray-400">Stock OUT</div>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer"><input type="radio" name="txType" value="Adjustment" onchange="onTxTypeChange()" class="sr-only peer">
+                            <div class="text-center p-3 rounded-lg border-2 border-gray-200 peer-checked:border-gray-500 peer-checked:bg-gray-50 transition">
+                                <div class="text-lg">⚖️</div><div class="text-xs font-bold text-gray-700">Adjust</div><div class="text-xs text-gray-400">Set exact</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="form-label required-field">Select Item</label>
+                    <select id="txItem" class="form-input" required onchange="onTxItemChange()">
+                        <option value="">Choose an item...</option>
+                    </select>
+                    <div id="txCurrentStock" class="text-xs text-gray-500 mt-1"></div>
+                </div>
+                <div>
+                    <label class="form-label required-field" id="txQtyLabel">Quantity</label>
+                    <input type="number" id="txQty" class="form-input" placeholder="0" min="0.01" step="0.01" required oninput="calcTxTotal()">
+                </div>
+                <div>
+                    <label class="form-label" id="txPriceLabel">Unit Price (KES)</label>
+                    <input type="number" id="txPrice" class="form-input" placeholder="0.00" min="0" step="0.01" oninput="calcTxTotal()">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="form-label">Total Value (KES)</label>
+                    <input type="text" id="txTotal" class="form-input calc-field" readonly placeholder="Auto-calculated">
+                </div>
+                <div>
+                    <label class="form-label">Date</label>
+                    <input type="date" id="txDate" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">Reference / Notes</label>
+                    <input type="text" id="txRef" class="form-input" placeholder="Invoice no., notes...">
+                </div>
+            </div>
+            <div class="flex gap-3 justify-end mt-5">
+                <button type="button" onclick="closeTransactionModal()" class="btn btn-outline">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                    Record Transaction
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- DELETE CONFIRM -->
+<div id="deleteModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-box" style="max-width:400px">
+        <h3 class="modal-title font-construction mb-2">CONFIRM DELETE</h3>
+        <p class="text-gray-600 text-sm mb-6" id="deleteModalMsg">Are you sure you want to delete this record?</p>
+        <div class="flex gap-3 justify-end">
+            <button onclick="closeDeleteModal()" class="btn btn-outline">Cancel</button>
+            <button id="confirmDeleteBtn" class="btn btn-danger">Delete</button>
+        </div>
+    </div>
+</div>
+
+<script src="script/lib/jspdf.umd.min.js"></script>
+<script src="script/lib/jspdf.plugin.autotable.min.js"></script>
+<script src="script/stock-management-script.js"></script>
+</body>
+</html>

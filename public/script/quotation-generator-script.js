@@ -3868,8 +3868,11 @@ async function generateAcceptanceLetter(data) {
     const totals = calculateTotals(data);
 
     // Pre-calculate body text height for SmartSpacing
+    // IMPORTANT: Set body font BEFORE splitTextToSize so it measures with the correct metrics
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
     const bodyText = `We are pleased to formally accept the contract for the above-referenced construction project valued at KES ${numberWithCommas(totals.total)}. This acceptance is issued in accordance with the terms and specifications provided, and we hereby commit to delivering the project within the agreed timeline while maintaining the highest standards of workmanship, quality control, compliance with all applicable safety regulations and building codes, and providing regular progress updates throughout the project duration. We look forward to commencing work and ensuring the successful completion of this project to your full satisfaction.`;
-    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin) - 10);
+    const bodyLines = doc.splitTextToSize(bodyText, pageWidth - (2 * margin));
     const bodyH = bodyLines.length * 5;
 
     // SmartSpacing: define all sections
@@ -4075,7 +4078,7 @@ async function generatePaymentRequest(data, paymentDetails) {
         styles: {
             fontSize: 10,
             textColor: Colors.text,
-            cellPadding: 5
+            cellPadding: 3
         },
         headStyles: {
             fillColor: Colors.secondary,
@@ -4095,9 +4098,9 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     // === POST-TABLE: SmartSpacing layout ===
     const postBlocks = [
-        { height: 0, minGap: 8, preferredGap: 15 },           // spacer: table -> AMOUNT DUE
-        { height: 16, minGap: 3, preferredGap: 8 },            // AMOUNT DUE bar
-        { height: 35, minGap: 3, preferredGap: 8 },            // bank details box
+        { height: 0, minGap: 3, preferredGap: 10 },           // spacer: table -> AMOUNT DUE
+        { height: 16, minGap: 1, preferredGap: 6 },            // AMOUNT DUE bar
+        { height: 30, minGap: 1, preferredGap: 6 },            // bank details box
         { height: 20, minGap: 0, preferredGap: 0, keepWithNext: true }, // signature
         { height: 38, minGap: 0, preferredGap: 0 }             // seal
     ];
@@ -4122,18 +4125,18 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     // Bank details
     doc.setFillColor(...Colors.subtle);
-    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 35, 3, 3, 'F');
+    doc.roundedRect(margin, yPos, pageWidth - (2 * margin), 30, 3, 3, 'F');
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(...Colors.secondary);
-    doc.text("BANK DETAILS", margin + 5, yPos + 8);
+    doc.text("BANK DETAILS", margin + 5, yPos + 7);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(...Colors.text);
 
-    let payY = yPos + 14;
+    let payY = yPos + 13;
     const paymentInfo = [
         `Bank: ${paymentDetails.bankName}`,
         `Account: ${paymentDetails.accountNumber}`,
@@ -4144,11 +4147,11 @@ async function generatePaymentRequest(data, paymentDetails) {
 
     paymentInfo.forEach(info => {
         doc.text(info, margin + 5, payY);
-        payY += 4.5;
+        payY += 3.5;
     });
 
     // Gap: bank details -> signature
-    yPos = SmartSpacing.advance(yPos, 35, postLayout, pi++, doc, onNewPage);
+    yPos = SmartSpacing.advance(yPos, 30, postLayout, pi++, doc, onNewPage);
 
     // Signature
     const signatureStartY = yPos;
@@ -4388,16 +4391,13 @@ async function generateInvoice(data, invoiceDetails) {
     // Gap: disclaimer -> seal
     yPos = SmartSpacing.advance(yPos, disclaimerH, postLayout, pi++, doc, onNewPage);
 
-    // Professional seal with QR verification (watermark mode for content-dense invoice)
+    // Professional seal with QR verification
     const invDocId = generateDocumentUUID('INVOICE', documentNumber);
     placeSealAndQR(doc, yPos, {
         docType: 'INVOICE',
         docNumber: documentNumber,
         date: new Date().toLocaleDateString('en-GB'),
-        watermark: true,
         documentId: invDocId
-    }, {
-        placement: 'right-side'
     });
     const invAmount = totals.totalDeductions > 0 ? totals.netPayable : totals.total;
     storeDocumentRecord(invDocId, 'INVOICE', documentNumber, data.clientName, invAmount).catch(() => {});
