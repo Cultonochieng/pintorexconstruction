@@ -431,9 +431,15 @@ function getStockStatus(item) {
 // ============================================================================
 function switchBusiness(biz) {
     currentBiz = biz;
+    // Desktop sidebar buttons
     document.getElementById('bizHardware').classList.toggle('active', biz === 'hardware');
     document.getElementById('bizClub').classList.toggle('active', biz === 'club');
     document.getElementById('bizLabel').textContent = BIZ_LABELS[biz];
+    // Mobile switcher bar buttons
+    const mHW = document.getElementById('bizHardwareMobile');
+    const mCL = document.getElementById('bizClubMobile');
+    if (mHW) mHW.classList.toggle('active', biz === 'hardware');
+    if (mCL) mCL.classList.toggle('active', biz === 'club');
     populateCategoryDropdowns();
     refreshAll();
 }

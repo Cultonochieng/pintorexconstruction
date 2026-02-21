@@ -37,14 +37,41 @@
         .app-shell { display: flex; min-height: calc(100vh - 60px); }
         .sidebar { width: 220px; flex-shrink: 0; background: var(--color-secondary); }
         .content-area { flex: 1; overflow-x: hidden; padding: 24px; }
+        /* Mobile business switcher bar — hidden on desktop, shown on mobile */
+        .mobile-biz-bar { display: none; background: var(--color-secondary); border-top: 1px solid rgba(255,255,255,0.08); }
+
         @media(max-width:768px) {
             .app-shell { flex-direction: column; }
             .sidebar { width: 100%; display: flex; flex-direction: row; overflow-x: auto; }
             .sidebar-nav { display: flex; flex-direction: row; padding: 0; }
+            .sidebar-section-label { display: none; }
             .sidebar-item { padding: 12px 16px !important; border-left: none !important; border-bottom: 3px solid transparent; white-space: nowrap; }
             .sidebar-item.active { border-left: none !important; border-bottom-color: var(--color-primary) !important; }
             .sidebar-logo { display: none; }
-            .content-area { padding: 16px; }
+            .content-area { padding: 12px; }
+            /* Show mobile business switcher */
+            .mobile-biz-bar { display: flex; align-items: center; padding: 6px 12px 8px; }
+            .mobile-biz-bar .biz-toggle { margin: 0; flex: 1; }
+            /* Compact modal padding */
+            .modal-box { padding: 16px 14px; }
+            /* Smooth table scroll on iOS */
+            .table-wrap { -webkit-overflow-scrolling: touch; }
+            /* Compact stat cards */
+            .stat-card { padding: 14px; }
+            .stat-value { font-size: 1.3rem; }
+            /* Section header stacks nicely */
+            .section-header { flex-direction: column; align-items: flex-start; }
+            .section-header > div.flex { width: 100%; }
+            /* Search input fills available width */
+            .search-bar { flex: 1; min-width: 0; }
+            #invSearch { min-width: 0 !important; width: 100% !important; }
+        }
+        @media(max-width:480px) {
+            .content-area { padding: 8px; }
+            .section-body { padding: 12px; }
+            .section-header { padding: 12px 14px; }
+            .data-table th { font-size: 0.65rem; padding: 7px 8px; }
+            .data-table td { font-size: 0.75rem; padding: 8px 8px; }
         }
         .sidebar-logo { padding: 20px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .sidebar-nav { padding: 12px 0; }
@@ -267,6 +294,14 @@
                 </div>
             </nav>
         </aside>
+
+        <!-- MOBILE BUSINESS SWITCHER (hidden on desktop, shown on mobile below nav bar) -->
+        <div class="mobile-biz-bar">
+            <div class="biz-toggle" style="margin:0; flex:1; border-radius:6px;">
+                <button class="biz-btn active" id="bizHardwareMobile" onclick="switchBusiness('hardware')">🔨 Hardware</button>
+                <button class="biz-btn" id="bizClubMobile" onclick="switchBusiness('club')">🍺 Club / Bar</button>
+            </div>
+        </div>
 
         <!-- CONTENT -->
         <main class="content-area">
