@@ -76,6 +76,31 @@ const authLimiter = rateLimit({
     legacyHeaders: false
 });
 
+// Rate limiting for document downloads
+const downloadLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20, // 20 downloads per hour per IP
+    message: { error: 'Too many download requests. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// CSRF protection: if the browser sends an Origin header it must match our domain.
+// Same-origin fetch() may omit Origin — that's fine. Cross-origin requests always
+// include Origin, so a mismatch means a third-party site is attempting CSRF.
+const verifyOrigin = (req, res, next) => {
+    const origin = req.get('origin');
+    if (origin) {
+        const allowed = process.env.NODE_ENV === 'production'
+            ? 'https://pintorexconstruction.onrender.com'
+            : 'http://localhost:3000';
+        if (origin !== allowed) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
+    next();
+};
+
 // General rate limiting
 const generalLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute
@@ -112,7 +137,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ============================================================================
 
 // Verify password endpoint
-app.post('/api/auth/verify', authLimiter, async (req, res) => {
+app.post('/api/auth/verify', authLimiter, verifyOrigin, async (req, res) => {
     try {
         const { password } = req.body;
 
@@ -173,7 +198,7 @@ app.get('/api/auth/status', (req, res) => {
 });
 
 // Validate offline token endpoint (for re-validation when back online)
-app.post('/api/auth/validate-offline-token', (req, res) => {
+app.post('/api/auth/validate-offline-token', verifyOrigin, (req, res) => {
     try {
         const { token } = req.body;
         if (!token) return res.status(400).json({ valid: false });
@@ -192,7 +217,7 @@ app.post('/api/auth/validate-offline-token', (req, res) => {
 });
 
 // Logout endpoint
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', verifyOrigin, (req, res) => {
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ error: 'Logout failed' });
@@ -216,7 +241,7 @@ const requireAuth = (req, res, next) => {
 };
 
 // Protected PDF download endpoint
-app.get('/api/documents/company-profile', requireAuth, (req, res) => {
+app.get('/api/documents/company-profile', requireAuth, downloadLimiter, (req, res) => {
     const filePath = path.join(__dirname, 'public', 'docs', 'company profile pintorex.pdf');
     res.download(filePath, 'Pintorex-Company-Profile.pdf', (err) => {
         if (err) {

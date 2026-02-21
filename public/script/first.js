@@ -557,18 +557,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!carousel) return;
 
     // Clone testimonials for infinite scroll
-    const testimonials = carousel.children;
-    const clonedTestimonials = Array.from(testimonials).map(t => t.cloneNode(true));
-    clonedTestimonials.forEach(clone => carousel.appendChild(clone));
+    const originals = Array.from(carousel.children);
+    originals.forEach(t => carousel.appendChild(t.cloneNode(true)));
 
-    // Pause on hover
-    carousel.addEventListener('mouseenter', () => {
-        carousel.style.animationPlayState = 'paused';
-    });
+    // Measure actual width of original cards (including gap) and set --scroll-distance
+    // so the loop closes seamlessly regardless of card width or screen size
+    function setScrollDistance() {
+        let totalWidth = 0;
+        originals.forEach(card => {
+            const style = window.getComputedStyle(card);
+            totalWidth += card.offsetWidth + parseFloat(style.marginRight || 0);
+        });
+        // account for gap defined on the flex container
+        const gap = parseFloat(window.getComputedStyle(carousel).gap) || 24;
+        totalWidth += gap * originals.length;
+        carousel.style.setProperty('--scroll-distance', totalWidth + 'px');
+    }
 
-    carousel.addEventListener('mouseleave', () => {
-        carousel.style.animationPlayState = 'running';
-    });
+    setScrollDistance();
+    window.addEventListener('resize', setScrollDistance);
+
+    // Pause on hover / touch
+    carousel.addEventListener('mouseenter', () => { carousel.style.animationPlayState = 'paused'; });
+    carousel.addEventListener('mouseleave', () => { carousel.style.animationPlayState = 'running'; });
 });
 
 // Testimonial navigation

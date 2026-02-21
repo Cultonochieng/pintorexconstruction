@@ -33,6 +33,46 @@ function genUUID() {
     });
 }
 
+// Safe localStorage setter — guards against QuotaExceededError
+function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            console.warn('[Storage] Quota exceeded for key:', key);
+            setTimeout(() => { if (typeof Toast !== 'undefined') Toast.error('Storage full. Please clear browser storage.'); }, 0);
+        }
+    }
+}
+
+// Sync queue — retry failed Supabase writes when back online
+const SyncQueue = {
+    KEY: 'pintorex_emp_sync_queue',
+    _get() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch { return []; } },
+    push(table, op, data) {
+        try {
+            const q = this._get();
+            q.push({ id: genUUID(), table, op, data, at: Date.now() });
+            localStorage.setItem(this.KEY, JSON.stringify(q.slice(-100)));
+        } catch {}
+    },
+    remove(id) {
+        try { localStorage.setItem(this.KEY, JSON.stringify(this._get().filter(i => i.id !== id))); } catch {}
+    },
+    async flush(client) {
+        if (!client || !navigator.onLine) return;
+        const items = this._get();
+        if (!items.length) return;
+        for (const item of items) {
+            try {
+                let error;
+                if (item.op === 'insert') ({ error } = await client.from(item.table).insert(item.data));
+                else if (item.op === 'update') ({ error } = await client.from(item.table).update(item.data).eq('id', item.data.id));
+                else if (item.op === 'delete') ({ error } = await client.from(item.table).delete().eq('id', item.data));
+                if (!error) this.remove(item.id);
+            } catch {}
+        }
+    }
+};
+
 // ============================================================================
 // UTILITY HELPERS
 // ============================================================================
@@ -156,7 +196,10 @@ const EmployeeManager = {
         try {
             const { error } = await sbClient.from('employees').insert(this._toDB(emp));
             if (error) throw error;
-        } catch (e) { console.warn('Employee add sync failed:', e); }
+        } catch (e) {
+            console.warn('Employee add sync failed — queued:', e);
+            SyncQueue.push('employees', 'insert', this._toDB(emp));
+        }
     },
 
     update(emp) {
@@ -170,7 +213,10 @@ const EmployeeManager = {
         try {
             const { error } = await sbClient.from('employees').update(this._toDB(emp)).eq('id', emp.id);
             if (error) throw error;
-        } catch (e) { console.warn('Employee update sync failed:', e); }
+        } catch (e) {
+            console.warn('Employee update sync failed — queued:', e);
+            SyncQueue.push('employees', 'update', this._toDB(emp));
+        }
     },
 
     delete(id) {
@@ -185,7 +231,10 @@ const EmployeeManager = {
         try {
             const { error } = await sbClient.from('employees').delete().eq('id', id);
             if (error) throw error;
-        } catch (e) { console.warn('Employee delete sync failed:', e); }
+        } catch (e) {
+            console.warn('Employee delete sync failed — queued:', e);
+            SyncQueue.push('employees', 'delete', id);
+        }
     },
 
     getById(id) { return this._employees.find(e => e.id === id); },
@@ -263,14 +312,23 @@ const PaymentManager = {
         try {
             const { error } = await sbClient.from('payments').insert(this._toDB(pay));
             if (error) {
-                // FK not yet synced? retry once after delay
                 if (error.code === '23503') {
+                    // FK not yet synced — retry once after delay, then queue
                     await new Promise(r => setTimeout(r, 2000));
                     const { error: e2 } = await sbClient.from('payments').insert(this._toDB(pay));
-                    if (e2) throw e2;
-                } else throw error;
+                    if (e2) {
+                        console.warn('Payment add retry failed — queued:', e2);
+                        SyncQueue.push('payments', 'insert', this._toDB(pay));
+                    }
+                } else {
+                    console.warn('Payment add sync failed — queued:', error);
+                    SyncQueue.push('payments', 'insert', this._toDB(pay));
+                }
             }
-        } catch (e) { console.warn('Payment add sync failed:', e); }
+        } catch (e) {
+            console.warn('Payment add sync error — queued:', e);
+            SyncQueue.push('payments', 'insert', this._toDB(pay));
+        }
     },
 
     update(pay) {
@@ -284,7 +342,10 @@ const PaymentManager = {
         try {
             const { error } = await sbClient.from('payments').update(this._toDB(pay)).eq('id', pay.id);
             if (error) throw error;
-        } catch (e) { console.warn('Payment update sync failed:', e); }
+        } catch (e) {
+            console.warn('Payment update sync failed — queued:', e);
+            SyncQueue.push('payments', 'update', this._toDB(pay));
+        }
     },
 
     delete(id) {
@@ -297,7 +358,10 @@ const PaymentManager = {
         try {
             const { error } = await sbClient.from('payments').delete().eq('id', id);
             if (error) throw error;
-        } catch (e) { console.warn('Payment delete sync failed:', e); }
+        } catch (e) {
+            console.warn('Payment delete sync failed — queued:', e);
+            SyncQueue.push('payments', 'delete', id);
+        }
     },
 
     getById(id) { return this._payments.find(p => p.id === id); },
@@ -1279,7 +1343,12 @@ function initAuth() {
         document.getElementById('sessionLabel').textContent = 'Session active';
         refreshAll();
         populateAllEmployeeDropdowns();
+        // Flush any writes that failed while offline
+        SyncQueue.flush(sbClient).catch(() => {});
     };
+
+    // Retry pending sync queue whenever the device comes back online
+    window.addEventListener('online', () => { SyncQueue.flush(sbClient).catch(() => {}); });
 
     const showLogin = () => {
         loginGate.classList.remove('hidden');

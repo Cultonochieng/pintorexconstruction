@@ -3,8 +3,8 @@
 // Enables offline use of the quotation generator PWA
 // ============================================================================
 
-const CACHE_NAME = 'pintorex-site-v10';
-const OFFLINE_URL = '/quotation-generator.html';
+const CACHE_NAME = 'pintorex-site-v11';
+const OFFLINE_URL = '/offline.html';
 
 // Assets to cache for offline use (full site + quotation generator)
 const PRECACHE_ASSETS = [
@@ -22,7 +22,8 @@ const PRECACHE_ASSETS = [
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
   '/manifest.json',
-  '/verify.html'
+  '/verify.html',
+  '/offline.html'
 ];
 
 // Google Fonts to cache
@@ -154,7 +155,7 @@ self.addEventListener('fetch', (event) => {
         if (event.request.mode === 'navigate') {
           return caches.match(OFFLINE_URL);
         }
-        return new Response('Offline', { status: 503, statusText: 'Offline' });
+        return new Response('{"error":"offline"}', { status: 503, headers: { 'Content-Type': 'application/json' } });
       })
   );
 });

@@ -34,6 +34,46 @@ function genUUID() {
     });
 }
 
+// Safe localStorage setter — guards against QuotaExceededError
+function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            console.warn('[Storage] Quota exceeded for key:', key);
+            setTimeout(() => { if (typeof Toast !== 'undefined') Toast.error('Storage full. Please clear browser storage.'); }, 0);
+        }
+    }
+}
+
+// Sync queue — retry failed Supabase writes when back online
+const SyncQueue = {
+    KEY: 'pintorex_stock_sync_queue',
+    _get() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch { return []; } },
+    push(table, op, data) {
+        try {
+            const q = this._get();
+            q.push({ id: genUUID(), table, op, data, at: Date.now() });
+            localStorage.setItem(this.KEY, JSON.stringify(q.slice(-100)));
+        } catch {}
+    },
+    remove(id) {
+        try { localStorage.setItem(this.KEY, JSON.stringify(this._get().filter(i => i.id !== id))); } catch {}
+    },
+    async flush(client) {
+        if (!client || !navigator.onLine) return;
+        const items = this._get();
+        if (!items.length) return;
+        for (const item of items) {
+            try {
+                let error;
+                if (item.op === 'insert') ({ error } = await client.from(item.table).insert(item.data));
+                else if (item.op === 'update') ({ error } = await client.from(item.table).update(item.data).eq('id', item.data.id));
+                else if (item.op === 'delete') ({ error } = await client.from(item.table).delete().eq('id', item.data));
+                if (!error) this.remove(item.id);
+            } catch {}
+        }
+    }
+};
+
 // ============================================================================
 // CATEGORIES
 // ============================================================================
@@ -177,7 +217,10 @@ const StockDB = {
         try {
             const { error } = await sbClient.from('stock_items').insert(this._toDB(item, biz));
             if (error) throw error;
-        } catch (e) { console.warn('Stock add sync failed:', e); }
+        } catch (e) {
+            console.warn('Stock add sync failed — queued:', e);
+            SyncQueue.push('stock_items', 'insert', this._toDB(item, biz));
+        }
     },
 
     update(item, biz = currentBiz) {
@@ -194,7 +237,10 @@ const StockDB = {
                 updated_at: new Date().toISOString()
             }).eq('id', item.id);
             if (error) throw error;
-        } catch (e) { console.warn('Stock update sync failed:', e); }
+        } catch (e) {
+            console.warn('Stock update sync failed — queued:', e);
+            SyncQueue.push('stock_items', 'update', { ...this._toDB(item, biz), updated_at: new Date().toISOString() });
+        }
     },
 
     delete(id, biz = currentBiz) {
@@ -209,7 +255,10 @@ const StockDB = {
         try {
             const { error } = await sbClient.from('stock_items').delete().eq('id', id);
             if (error) throw error;
-        } catch (e) { console.warn('Stock delete sync failed:', e); }
+        } catch (e) {
+            console.warn('Stock delete sync failed — queued:', e);
+            SyncQueue.push('stock_items', 'delete', id);
+        }
     },
 
     getById(id, biz = currentBiz) { return this._items[biz].find(i => i.id === id); },
@@ -286,35 +335,34 @@ const TxDB = {
 
     async _syncAdd(tx, biz) {
         if (!sbClient) return;
+        const payload = {
+            id: tx.id, business: biz, item_id: tx.itemId, type: tx.type,
+            qty_change: parseFloat(tx.qtyChange) || 0,
+            unit_price: parseFloat(tx.unitPrice) || null,
+            total_value: parseFloat(tx.totalValue) || null,
+            balance_after: parseFloat(tx.balanceAfter) || null,
+            date: tx.date || null, ref: tx.ref || null
+        };
         try {
-            const { error } = await sbClient.from('stock_transactions').insert({
-                id: tx.id,
-                business: biz,
-                item_id: tx.itemId,
-                type: tx.type,
-                qty_change: parseFloat(tx.qtyChange) || 0,
-                unit_price: parseFloat(tx.unitPrice) || null,
-                total_value: parseFloat(tx.totalValue) || null,
-                balance_after: parseFloat(tx.balanceAfter) || null,
-                date: tx.date || null,
-                ref: tx.ref || null
-            });
+            const { error } = await sbClient.from('stock_transactions').insert(payload);
             if (error) {
-                // FK not yet synced? retry once
                 if (error.code === '23503') {
+                    // FK not yet synced — retry once, then queue
                     await new Promise(r => setTimeout(r, 2000));
-                    const { error: e2 } = await sbClient.from('stock_transactions').insert({
-                        id: tx.id, business: biz, item_id: tx.itemId, type: tx.type,
-                        qty_change: parseFloat(tx.qtyChange) || 0,
-                        unit_price: parseFloat(tx.unitPrice) || null,
-                        total_value: parseFloat(tx.totalValue) || null,
-                        balance_after: parseFloat(tx.balanceAfter) || null,
-                        date: tx.date || null, ref: tx.ref || null
-                    });
-                    if (e2) throw e2;
-                } else throw error;
+                    const { error: e2 } = await sbClient.from('stock_transactions').insert(payload);
+                    if (e2) {
+                        console.warn('Transaction add retry failed — queued:', e2);
+                        SyncQueue.push('stock_transactions', 'insert', payload);
+                    }
+                } else {
+                    console.warn('Transaction add sync failed — queued:', error);
+                    SyncQueue.push('stock_transactions', 'insert', payload);
+                }
             }
-        } catch (e) { console.warn('Transaction add sync failed:', e); }
+        } catch (e) {
+            console.warn('Transaction add sync error — queued:', e);
+            SyncQueue.push('stock_transactions', 'insert', payload);
+        }
     },
 
     delete(id, biz = currentBiz) {
@@ -327,7 +375,10 @@ const TxDB = {
         try {
             const { error } = await sbClient.from('stock_transactions').delete().eq('id', id);
             if (error) throw error;
-        } catch (e) { console.warn('Transaction delete sync failed:', e); }
+        } catch (e) {
+            console.warn('Transaction delete sync failed — queued:', e);
+            SyncQueue.push('stock_transactions', 'delete', id);
+        }
     },
 
     save(txs, biz = currentBiz) { this._txs[biz] = txs; }, // used in cascade deletes
@@ -1244,7 +1295,12 @@ function initAuth() {
         document.getElementById('sessionLabel').textContent = 'Session active';
         populateCategoryDropdowns();
         renderDashboard();
+        // Flush any writes that failed while offline
+        SyncQueue.flush(sbClient).catch(() => {});
     };
+
+    // Retry pending sync queue whenever the device comes back online
+    window.addEventListener('online', () => { SyncQueue.flush(sbClient).catch(() => {}); });
 
     const showLogin = () => {
         loginGate.classList.remove('hidden');

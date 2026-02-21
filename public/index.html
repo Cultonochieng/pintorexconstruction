@@ -215,7 +215,7 @@
         /* Testimonials carousel animation */
         @keyframes scroll {
             0% { transform: translateX(0); }
-            100% { transform: translateX(calc(-96rem - 6rem)); }
+            100% { transform: translateX(calc(-1 * var(--scroll-distance, 120rem))); }
         }
         .animate-scroll {
             animation: scroll 30s linear infinite;

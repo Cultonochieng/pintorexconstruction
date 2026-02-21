@@ -141,7 +141,7 @@ const CompanyManager = {
     },
 
     _saveData(data) {
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+        safeSet(this.STORAGE_KEY, JSON.stringify(data));
     },
 
     getAll() {
@@ -206,8 +206,23 @@ const CompanyManager = {
                 bank_details: company.bankDetails || {},
                 updated_at: new Date().toISOString()
             }, { onConflict: 'id' });
-            if (error) console.warn('Company sync failed:', error);
-        } catch (e) { console.warn('Company sync error:', e); }
+            if (error) {
+                console.warn('Company sync failed — queued for retry:', error);
+                SyncQueue.push('company_profiles', 'upsert', {
+                    id: company.id, name: company.name || '',
+                    short_name: company.shortName || null, descriptor: company.descriptor || null,
+                    tagline: company.tagline || null, phone: company.phone || null,
+                    email: company.email || null, address: company.address || null,
+                    location: company.location || null, color_theme: company.colorTheme || 'pintorex-orange',
+                    document_prefix: company.documentPrefix || null, logo_url: logoUrl,
+                    signatory_name: company.signatoryName || null, signatory_title: company.signatoryTitle || null,
+                    bank_details: company.bankDetails || {}, updated_at: new Date().toISOString()
+                });
+            }
+        } catch (e) {
+            console.warn('Company sync error — queued for retry:', e);
+            SyncQueue.push('company_profiles', 'upsert', { id: company.id, updated_at: new Date().toISOString() });
+        }
     },
 
     async syncFromSupabase() {
@@ -366,6 +381,66 @@ try {
     console.warn('Supabase client not available:', e);
 }
 
+// ============================================================================
+// SAFE LOCALSTORAGE SETTER — guards against QuotaExceededError
+// ============================================================================
+function safeSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            console.warn('[Storage] Quota exceeded — cannot persist key:', key);
+            // Defer toast until Toast is initialised (this may be called early)
+            setTimeout(() => {
+                if (typeof Toast !== 'undefined') {
+                    Toast.error('Storage full. Some data may not save. Clear browser storage to free space.');
+                }
+            }, 0);
+        }
+    }
+}
+
+// ============================================================================
+// SYNC QUEUE — retry failed Supabase writes when back online
+// ============================================================================
+const SyncQueue = {
+    KEY: 'pintorex_sync_queue',
+    _get() { try { return JSON.parse(localStorage.getItem(this.KEY)) || []; } catch { return []; } },
+
+    push(table, op, data) {
+        try {
+            const q = this._get();
+            const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+            q.push({ id, table, op, data, at: Date.now() });
+            localStorage.setItem(this.KEY, JSON.stringify(q.slice(-100))); // keep last 100
+        } catch {}
+    },
+
+    remove(id) {
+        try { localStorage.setItem(this.KEY, JSON.stringify(this._get().filter(i => i.id !== id))); } catch {}
+    },
+
+    async flush(client) {
+        if (!client || !navigator.onLine) return;
+        const items = this._get();
+        if (!items.length) return;
+        for (const item of items) {
+            try {
+                let error;
+                if (item.op === 'insert')
+                    ({ error } = await client.from(item.table).insert(item.data));
+                else if (item.op === 'upsert')
+                    ({ error } = await client.from(item.table).upsert(item.data, { onConflict: 'id' }));
+                else if (item.op === 'update')
+                    ({ error } = await client.from(item.table).update(item.data).eq('id', item.data.id));
+                else if (item.op === 'delete')
+                    ({ error } = await client.from(item.table).delete().eq('id', item.data));
+                if (!error) this.remove(item.id);
+            } catch {}
+        }
+    }
+};
+
 async function storeDocumentRecord(docId, docType, docNumber, clientName, amount) {
     if (!supabaseClient) return null;
     const company = CompanyManager.getActive();
@@ -395,6 +470,9 @@ async function storeDocumentRecord(docId, docType, docNumber, clientName, amount
 }
 
 async function getGPSCoordinates() {
+    // GPS capture requires explicit user opt-in in Settings (privacy by default)
+    const settings = SettingsManager.getSettings();
+    if (!settings || !settings.gpsEnabled) return null;
     return new Promise((resolve) => {
         if (!navigator.geolocation) return resolve(null);
         navigator.geolocation.getCurrentPosition(
@@ -1028,56 +1106,45 @@ const ClientHistory = {
     MAX_CLIENTS: 50,
 
     getHistory() {
-        const data = localStorage.getItem(this.HISTORY_KEY);
-        return data ? JSON.parse(data) : [];
+        try { return JSON.parse(localStorage.getItem(this.HISTORY_KEY)) || []; } catch { return []; }
     },
 
     addClient(clientName, projectType) {
         if (!clientName) return;
 
         let history = this.getHistory();
-
-        // Check if client already exists
         const existingIndex = history.findIndex(c =>
             c.name.toLowerCase() === clientName.toLowerCase()
         );
 
         if (existingIndex >= 0) {
-            // Update existing client
             history[existingIndex].projectType = projectType;
             history[existingIndex].lastUsed = Date.now();
-            // Move to front
             const client = history.splice(existingIndex, 1)[0];
             history.unshift(client);
         } else {
-            // Add new client
-            history.unshift({
-                name: clientName,
-                projectType: projectType,
-                lastUsed: Date.now()
-            });
+            history.unshift({ name: clientName, projectType: projectType, lastUsed: Date.now() });
         }
 
-        // Limit history size
-        if (history.length > this.MAX_CLIENTS) {
-            history = history.slice(0, this.MAX_CLIENTS);
-        }
+        if (history.length > this.MAX_CLIENTS) history = history.slice(0, this.MAX_CLIENTS);
 
-        localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
-        // Background Supabase sync
+        safeSet(this.HISTORY_KEY, JSON.stringify(history));
         this._syncClient(clientName, projectType);
     },
 
     async _syncClient(name, projectType) {
         if (!supabaseClient) return;
+        const payload = { name, project_type: projectType || null, last_used: new Date().toISOString() };
         try {
-            const { error } = await supabaseClient.from('client_history').upsert({
-                name: name,
-                project_type: projectType || null,
-                last_used: new Date().toISOString()
-            }, { onConflict: 'name' });
-            if (error) console.warn('Client history sync failed:', error);
-        } catch (e) { console.warn('Client history sync error:', e); }
+            const { error } = await supabaseClient.from('client_history').upsert(payload, { onConflict: 'name' });
+            if (error) {
+                console.warn('Client history sync failed — queued for retry:', error);
+                SyncQueue.push('client_history', 'upsert', payload);
+            }
+        } catch (e) {
+            console.warn('Client history sync error — queued for retry:', e);
+            SyncQueue.push('client_history', 'upsert', payload);
+        }
     },
 
     async syncFromSupabase() {
@@ -1098,7 +1165,7 @@ const ClientHistory = {
             if (changed) {
                 history.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
                 history = history.slice(0, this.MAX_CLIENTS);
-                localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
+                safeSet(this.HISTORY_KEY, JSON.stringify(history));
             }
         } catch (e) { console.warn('Client history load from Supabase failed:', e); }
     },
@@ -1184,37 +1251,46 @@ const DocumentRegistry = {
             registry.documents = registry.documents.slice(-30);
         }
 
-        localStorage.setItem('pintorex_registry', JSON.stringify(registry));
+        safeSet('pintorex_registry', JSON.stringify(registry));
         return number;
     },
 
     updateLastDocument(extraData) {
         if (this._isRedownload) return; // Skip during re-download
-        const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
-        if (registry.documents.length === 0) return;
-        const last = registry.documents[registry.documents.length - 1];
-        if (extraData.clientName) last.clientName = extraData.clientName;
-        if (extraData.amount) last.amount = extraData.amount;
-        if (extraData.formDataSnapshot) last.formDataSnapshot = extraData.formDataSnapshot;
-        localStorage.setItem('pintorex_registry', JSON.stringify(registry));
-        // Background sync to Supabase
-        this._syncDocument(last);
+        try {
+            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{"documents":[],"counters":{}}');
+            if (registry.documents.length === 0) return;
+            const last = registry.documents[registry.documents.length - 1];
+            if (extraData.clientName) last.clientName = extraData.clientName;
+            if (extraData.amount) last.amount = extraData.amount;
+            if (extraData.formDataSnapshot) last.formDataSnapshot = extraData.formDataSnapshot;
+            safeSet('pintorex_registry', JSON.stringify(registry));
+            // Background sync to Supabase
+            this._syncDocument(last);
+        } catch {}
     },
 
     async _syncDocument(doc) {
         if (!supabaseClient) return;
+        const payload = {
+            number: doc.number,
+            type: doc.type,
+            company_id: doc.companyId,
+            client_name: doc.clientName || null,
+            amount: parseFloat(doc.amount) || 0,
+            form_data_snapshot: doc.formDataSnapshot || null,
+            created_at: doc.date || new Date().toISOString()
+        };
         try {
-            const { error } = await supabaseClient.from('document_history').upsert({
-                number: doc.number,
-                type: doc.type,
-                company_id: doc.companyId,
-                client_name: doc.clientName || null,
-                amount: parseFloat(doc.amount) || 0,
-                form_data_snapshot: doc.formDataSnapshot || null,
-                created_at: doc.date || new Date().toISOString()
-            }, { onConflict: 'number' });
-            if (error) console.warn('Document history sync failed:', error);
-        } catch (e) { console.warn('Document history sync error:', e); }
+            const { error } = await supabaseClient.from('document_history').upsert(payload, { onConflict: 'number' });
+            if (error) {
+                console.warn('Document history sync failed — queued for retry:', error);
+                SyncQueue.push('document_history', 'upsert', payload);
+            }
+        } catch (e) {
+            console.warn('Document history sync error — queued for retry:', e);
+            SyncQueue.push('document_history', 'upsert', payload);
+        }
     },
 
     async loadFromSupabase() {
@@ -1226,7 +1302,8 @@ const DocumentRegistry = {
                 .order('created_at', { ascending: false })
                 .limit(50);
             if (error || !data || !data.length) return;
-            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{"documents":[],"counters":{}}');
+            const raw = localStorage.getItem('pintorex_registry');
+            const registry = raw ? (JSON.parse(raw) || { documents: [], counters: {} }) : { documents: [], counters: {} };
             let changed = false;
             data.forEach(row => {
                 if (!registry.documents.find(d => d.number === row.number)) {
@@ -1246,20 +1323,24 @@ const DocumentRegistry = {
             if (changed) {
                 registry.documents.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 registry.documents = registry.documents.slice(0, 50);
-                localStorage.setItem('pintorex_registry', JSON.stringify(registry));
+                safeSet('pintorex_registry', JSON.stringify(registry));
             }
         } catch (e) { console.warn('Document history load from Supabase failed:', e); }
     },
 
     getLastDocument(type) {
-        const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
-        const docs = registry.documents.filter(doc => doc.type === type);
-        return docs.length > 0 ? docs[docs.length - 1] : null;
+        try {
+            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{"documents":[]}');
+            const docs = registry.documents.filter(doc => doc.type === type);
+            return docs.length > 0 ? docs[docs.length - 1] : null;
+        } catch { return null; }
     },
 
     getAllDocuments() {
-        const registry = JSON.parse(localStorage.getItem('pintorex_registry'));
-        return (registry.documents || []).slice().reverse();
+        try {
+            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{"documents":[]}');
+            return (registry.documents || []).slice().reverse();
+        } catch { return []; }
     },
 
     getDocumentsByType(type) {
@@ -1468,24 +1549,25 @@ const DocumentHistoryPanel = {
 const SettingsManager = {
     init() {
         if (!localStorage.getItem('pintorex_settings')) {
-            localStorage.setItem('pintorex_settings', JSON.stringify({
+            safeSet('pintorex_settings', JSON.stringify({
                 bankDetails: {
                     bankName: '',
                     accountName: 'Pintorex Construction Limited',
                     accountNumber: '',
                     branch: ''
                 },
-                suppliers: []
+                suppliers: [],
+                gpsEnabled: false
             }));
         }
     },
 
     getSettings() {
-        return JSON.parse(localStorage.getItem('pintorex_settings'));
+        try { return JSON.parse(localStorage.getItem('pintorex_settings')) || {}; } catch { return {}; }
     },
 
     saveSettings(settings) {
-        localStorage.setItem('pintorex_settings', JSON.stringify(settings));
+        safeSet('pintorex_settings', JSON.stringify(settings));
     },
 
     getBankDetails() {
@@ -1939,6 +2021,23 @@ const ModalUI = {
                     </div>
                 </div>
 
+                <!-- Privacy Settings -->
+                <div>
+                    <h3 style="font-size: 1rem; font-weight: 600; color: #1F2937; margin-bottom: 12px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;display:inline;vertical-align:text-bottom;margin-right:6px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                        Privacy
+                    </h3>
+                    <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 12px; border: 1px solid #E5E7EB; border-radius: 8px; background: #F9FAFB;">
+                        <input type="checkbox" id="gpsEnabledToggle" ${settings.gpsEnabled ? 'checked' : ''} style="width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px;">
+                        <div>
+                            <div style="font-size: 0.875rem; font-weight: 500; color: #374151;">Include GPS location in document records</div>
+                            <div style="font-size: 0.75rem; color: #6B7280; margin-top: 3px;">When enabled, your device's approximate coordinates are stored in Supabase alongside each document. <strong>Off by default.</strong> Your browser will ask for location permission when you generate the first document.</div>
+                        </div>
+                    </label>
+                </div>
+
                 <!-- Document history moved to dedicated History panel -->
             </div>
         `;
@@ -2038,8 +2137,16 @@ const ModalUI = {
                 branch: document.getElementById('settingsBranch').value,
                 accountName: CompanyManager.getActive().name
             };
-
             SettingsManager.saveBankDetails(bankDetails);
+
+            // Save privacy / GPS setting
+            const gpsToggle = document.getElementById('gpsEnabledToggle');
+            if (gpsToggle) {
+                const s = SettingsManager.getSettings();
+                s.gpsEnabled = gpsToggle.checked;
+                SettingsManager.saveSettings(s);
+            }
+
             Toast.success('Settings saved successfully');
             this.removeModal();
         });
@@ -3367,7 +3474,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         CompanyManager.syncFromSupabase(),
         DocumentRegistry.loadFromSupabase(),
         ClientHistory.syncFromSupabase()
-    ]).catch(() => {}); // Never let sync errors affect the UI
+    ]).then(() => {
+        // Flush any writes that failed while offline
+        SyncQueue.flush(supabaseClient).catch(() => {});
+    }).catch(() => {}); // Never let sync errors affect the UI
+
+    // Retry pending sync queue whenever the device comes back online
+    window.addEventListener('online', () => {
+        SyncQueue.flush(supabaseClient).catch(() => {});
+    });
 
     // Add settings button
     const settingsButton = document.createElement('button');
