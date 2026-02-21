@@ -179,6 +179,84 @@ const CompanyManager = {
         if (data.activeId === company.id) {
             this.applyActiveTheme();
         }
+        // Background Supabase sync
+        this._syncSave(company);
+    },
+
+    async _syncSave(company) {
+        if (!supabaseClient) return;
+        try {
+            // Don't sync logo_url if it's a large base64 string (>200KB)
+            const logoUrl = company.logoUrl && company.logoUrl.length < 200000 ? company.logoUrl : null;
+            const { error } = await supabaseClient.from('company_profiles').upsert({
+                id: company.id,
+                name: company.name || '',
+                short_name: company.shortName || null,
+                descriptor: company.descriptor || null,
+                tagline: company.tagline || null,
+                phone: company.phone || null,
+                email: company.email || null,
+                address: company.address || null,
+                location: company.location || null,
+                color_theme: company.colorTheme || 'pintorex-orange',
+                document_prefix: company.documentPrefix || null,
+                logo_url: logoUrl,
+                signatory_name: company.signatoryName || null,
+                signatory_title: company.signatoryTitle || null,
+                bank_details: company.bankDetails || {},
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+            if (error) console.warn('Company sync failed:', error);
+        } catch (e) { console.warn('Company sync error:', e); }
+    },
+
+    async syncFromSupabase() {
+        if (!supabaseClient) return;
+        try {
+            const { data, error } = await supabaseClient
+                .from('company_profiles').select('*').order('sort_order', { ascending: true });
+            if (error || !data || !data.length) return;
+            const existing = this._getData();
+            let changed = false;
+            data.forEach(row => {
+                const company = this._fromDB(row);
+                const idx = existing.companies.findIndex(c => c.id === company.id);
+                if (idx >= 0) {
+                    // Merge: preserve large base64 logo from localStorage
+                    existing.companies[idx] = { ...company, logoUrl: existing.companies[idx].logoUrl || company.logoUrl };
+                    changed = true;
+                } else {
+                    existing.companies.push(company);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                this._saveData(existing);
+                this.applyActiveTheme();
+                if (typeof updateCompanySelector === 'function') updateCompanySelector();
+                await loadLogoForPDF();
+            }
+        } catch (e) { console.warn('CompanyManager syncFromSupabase failed:', e); }
+    },
+
+    _fromDB(row) {
+        return {
+            id: row.id,
+            name: row.name || '',
+            shortName: row.short_name || '',
+            descriptor: row.descriptor || '',
+            tagline: row.tagline || '',
+            phone: row.phone || '',
+            email: row.email || '',
+            address: row.address || '',
+            location: row.location || '',
+            colorTheme: row.color_theme || 'pintorex-orange',
+            documentPrefix: row.document_prefix || '',
+            logoUrl: row.logo_url || null,
+            signatoryName: row.signatory_name || '',
+            signatoryTitle: row.signatory_title || '',
+            bankDetails: row.bank_details || {}
+        };
     },
 
     remove(id) {
@@ -192,6 +270,10 @@ const CompanyManager = {
         }
         this._saveData(data);
         this.applyActiveTheme();
+        // Background Supabase delete
+        if (supabaseClient) supabaseClient.from('company_profiles').delete().eq('id', id).then(({ error }) => {
+            if (error) console.warn('Company delete sync failed:', error);
+        });
     },
 
     derivePrefix(name) {
@@ -982,6 +1064,43 @@ const ClientHistory = {
         }
 
         localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
+        // Background Supabase sync
+        this._syncClient(clientName, projectType);
+    },
+
+    async _syncClient(name, projectType) {
+        if (!supabaseClient) return;
+        try {
+            const { error } = await supabaseClient.from('client_history').upsert({
+                name: name,
+                project_type: projectType || null,
+                last_used: new Date().toISOString()
+            }, { onConflict: 'name' });
+            if (error) console.warn('Client history sync failed:', error);
+        } catch (e) { console.warn('Client history sync error:', e); }
+    },
+
+    async syncFromSupabase() {
+        if (!supabaseClient) return;
+        try {
+            const { data, error } = await supabaseClient
+                .from('client_history').select('*')
+                .order('last_used', { ascending: false }).limit(50);
+            if (error || !data || !data.length) return;
+            let history = this.getHistory();
+            let changed = false;
+            data.forEach(row => {
+                if (!history.find(c => c.name.toLowerCase() === row.name.toLowerCase())) {
+                    history.push({ name: row.name, projectType: row.project_type, lastUsed: new Date(row.last_used).getTime() });
+                    changed = true;
+                }
+            });
+            if (changed) {
+                history.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+                history = history.slice(0, this.MAX_CLIENTS);
+                localStorage.setItem(this.HISTORY_KEY, JSON.stringify(history));
+            }
+        } catch (e) { console.warn('Client history load from Supabase failed:', e); }
     },
 
     searchClients(query) {
@@ -1078,6 +1197,58 @@ const DocumentRegistry = {
         if (extraData.amount) last.amount = extraData.amount;
         if (extraData.formDataSnapshot) last.formDataSnapshot = extraData.formDataSnapshot;
         localStorage.setItem('pintorex_registry', JSON.stringify(registry));
+        // Background sync to Supabase
+        this._syncDocument(last);
+    },
+
+    async _syncDocument(doc) {
+        if (!supabaseClient) return;
+        try {
+            const { error } = await supabaseClient.from('document_history').upsert({
+                number: doc.number,
+                type: doc.type,
+                company_id: doc.companyId,
+                client_name: doc.clientName || null,
+                amount: parseFloat(doc.amount) || 0,
+                form_data_snapshot: doc.formDataSnapshot || null,
+                created_at: doc.date || new Date().toISOString()
+            }, { onConflict: 'number' });
+            if (error) console.warn('Document history sync failed:', error);
+        } catch (e) { console.warn('Document history sync error:', e); }
+    },
+
+    async loadFromSupabase() {
+        if (!supabaseClient) return;
+        try {
+            const { data, error } = await supabaseClient
+                .from('document_history')
+                .select('id, number, type, company_id, client_name, amount, form_data_snapshot, created_at')
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error || !data || !data.length) return;
+            const registry = JSON.parse(localStorage.getItem('pintorex_registry') || '{"documents":[],"counters":{}}');
+            let changed = false;
+            data.forEach(row => {
+                if (!registry.documents.find(d => d.number === row.number)) {
+                    registry.documents.push({
+                        number: row.number,
+                        type: row.type,
+                        date: row.created_at,
+                        timestamp: new Date(row.created_at).getTime(),
+                        companyId: row.company_id,
+                        clientName: row.client_name || '',
+                        amount: parseFloat(row.amount) || 0,
+                        formDataSnapshot: row.form_data_snapshot || null
+                    });
+                    changed = true;
+                }
+            });
+            if (changed) {
+                registry.documents.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                registry.documents = registry.documents.slice(0, 50);
+                localStorage.setItem('pintorex_registry', JSON.stringify(registry));
+            }
+        } catch (e) { console.warn('Document history load from Supabase failed:', e); }
     },
 
     getLastDocument(type) {
@@ -1141,6 +1312,10 @@ const DocumentHistoryPanel = {
         requestAnimationFrame(() => {
             overlay.classList.add('active');
             panel.classList.add('active');
+        });
+        // Fetch from Supabase in background and re-render if new items found
+        DocumentRegistry.loadFromSupabase().then(() => {
+            if (panel.classList.contains('active')) this.render('all');
         });
     },
 
@@ -3179,13 +3354,20 @@ function setupClientHistory() {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // Initialize systems
+    // Initialize systems (local/sync)
     DocumentRegistry.init();
     SettingsManager.init();
     CompanyManager.init();
 
     // Load logo for PDFs
     await loadLogoForPDF();
+
+    // Background Supabase sync (non-blocking — runs after page is ready)
+    Promise.all([
+        CompanyManager.syncFromSupabase(),
+        DocumentRegistry.loadFromSupabase(),
+        ClientHistory.syncFromSupabase()
+    ]).catch(() => {}); // Never let sync errors affect the UI
 
     // Add settings button
     const settingsButton = document.createElement('button');

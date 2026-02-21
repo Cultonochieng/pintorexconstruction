@@ -7,12 +7,32 @@
 'use strict';
 
 // ============================================================================
-// STORAGE KEYS
+// STORAGE KEYS (offline fallback)
 // ============================================================================
 const STOCK_KEY = { hardware: 'pintorex_stock_hardware', club: 'pintorex_stock_club' };
 const TX_KEY = { hardware: 'pintorex_transactions_hardware', club: 'pintorex_transactions_club' };
 const SESSION_KEY = 'pintorex_session';
 const OFFLINE_TOKEN_KEY = 'pintorex_offline_token';
+
+// ============================================================================
+// SUPABASE CLIENT
+// ============================================================================
+const SUPABASE_URL = 'https://qjqgfbwirphnrbnvsbar.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcWdmYndpcnBobnJibnZzYmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NzQ0MjYsImV4cCI6MjA4NTM1MDQyNn0.WM2V0PlIpQAVzVSva9twFHPTNnrbgRKK-tQ3bPTPk_0';
+let sbClient = null;
+try {
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+        sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+} catch (e) { console.warn('Supabase not available:', e); }
+
+function genUUID() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
 
 // ============================================================================
 // CATEGORIES
@@ -111,52 +131,221 @@ const Auth = {
 };
 
 // ============================================================================
-// DATA MANAGERS
+// DATA MANAGERS (Supabase + localStorage fallback)
 // ============================================================================
 const StockDB = {
-    getAll(biz = currentBiz) {
-        try { return JSON.parse(localStorage.getItem(STOCK_KEY[biz])) || []; } catch { return []; }
+    // In-memory cache: { hardware: [...], club: [...] }
+    _items: { hardware: [], club: [] },
+
+    getAll(biz = currentBiz) { return this._items[biz] || []; },
+
+    async load(biz) {
+        if (sbClient) {
+            try {
+                const { data, error } = await sbClient
+                    .from('stock_items')
+                    .select('*')
+                    .eq('business', biz)
+                    .order('created_at', { ascending: true });
+                if (error) throw error;
+                this._items[biz] = (data || []).map(r => this._fromDB(r));
+                localStorage.setItem(STOCK_KEY[biz], JSON.stringify(this._items[biz]));
+                return;
+            } catch (e) { console.warn(`Supabase stock load (${biz}) failed, using localStorage:`, e); }
+        }
+        try { this._items[biz] = JSON.parse(localStorage.getItem(STOCK_KEY[biz])) || []; } catch { this._items[biz] = []; }
     },
-    save(items, biz = currentBiz) { localStorage.setItem(STOCK_KEY[biz], JSON.stringify(items)); },
+
     nextSku(biz = currentBiz) {
         const prefix = biz === 'hardware' ? 'HW' : 'CB';
-        const all = this.getAll(biz);
-        const nums = all.map(i => parseInt((i.sku || '').replace(prefix + '-', '')) || 0);
+        const nums = this._items[biz].map(i => parseInt((i.sku || '').replace(prefix + '-', '')) || 0);
         return `${prefix}-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0')}`;
     },
+
     add(item, biz = currentBiz) {
-        const all = this.getAll(biz);
-        item.id = genId();
+        item.id = genUUID();
         item.sku = item.sku || this.nextSku(biz);
         item.createdAt = new Date().toISOString();
         item.updatedAt = item.createdAt;
-        all.push(item);
-        this.save(all, biz);
+        this._items[biz].push(item);
+        this._syncAdd(item, biz);
         return item;
     },
-    update(item, biz = currentBiz) {
-        const all = this.getAll(biz);
-        const idx = all.findIndex(i => i.id === item.id);
-        if (idx >= 0) { all[idx] = { ...all[idx], ...item, updatedAt: new Date().toISOString() }; this.save(all, biz); }
+
+    async _syncAdd(item, biz) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('stock_items').insert(this._toDB(item, biz));
+            if (error) throw error;
+        } catch (e) { console.warn('Stock add sync failed:', e); }
     },
-    delete(id, biz = currentBiz) { this.save(this.getAll(biz).filter(i => i.id !== id), biz); },
-    getById(id, biz = currentBiz) { return this.getAll(biz).find(i => i.id === id); }
+
+    update(item, biz = currentBiz) {
+        const idx = this._items[biz].findIndex(i => i.id === item.id);
+        if (idx >= 0) this._items[biz][idx] = { ...this._items[biz][idx], ...item, updatedAt: new Date().toISOString() };
+        this._syncUpdate(item, biz);
+    },
+
+    async _syncUpdate(item, biz) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('stock_items').update({
+                ...this._toDB(item, biz),
+                updated_at: new Date().toISOString()
+            }).eq('id', item.id);
+            if (error) throw error;
+        } catch (e) { console.warn('Stock update sync failed:', e); }
+    },
+
+    delete(id, biz = currentBiz) {
+        this._items[biz] = this._items[biz].filter(i => i.id !== id);
+        // Also cascade-delete transactions for this item from cache
+        TxDB._txs[biz] = TxDB._txs[biz].filter(t => t.itemId !== id);
+        this._syncDelete(id, biz);
+    },
+
+    async _syncDelete(id, biz) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('stock_items').delete().eq('id', id);
+            if (error) throw error;
+        } catch (e) { console.warn('Stock delete sync failed:', e); }
+    },
+
+    getById(id, biz = currentBiz) { return this._items[biz].find(i => i.id === id); },
+
+    _toDB(item, biz) {
+        return {
+            id: item.id,
+            business: biz,
+            sku: item.sku || null,
+            name: item.name,
+            category: item.category || null,
+            unit: item.unit || null,
+            qty: parseFloat(item.qty) || 0,
+            min_qty: parseFloat(item.minQty) || 0,
+            cost: parseFloat(item.cost) || 0,
+            sell: parseFloat(item.sell) || 0,
+            margin: parseFloat(item.margin) || 0,
+            supplier: item.supplier || null,
+            supplier_phone: item.supplierPhone || null,
+            notes: item.notes || null
+        };
+    },
+
+    _fromDB(row) {
+        return {
+            id: row.id,
+            sku: row.sku || '',
+            name: row.name,
+            category: row.category || '',
+            unit: row.unit || '',
+            qty: parseFloat(row.qty) || 0,
+            minQty: parseFloat(row.min_qty) || 0,
+            cost: parseFloat(row.cost) || 0,
+            sell: parseFloat(row.sell) || 0,
+            margin: parseFloat(row.margin) || 0,
+            supplier: row.supplier || '',
+            supplierPhone: row.supplier_phone || '',
+            notes: row.notes || '',
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        };
+    }
 };
 
 const TxDB = {
-    getAll(biz = currentBiz) {
-        try { return JSON.parse(localStorage.getItem(TX_KEY[biz])) || []; } catch { return []; }
+    _txs: { hardware: [], club: [] },
+
+    getAll(biz = currentBiz) { return this._txs[biz] || []; },
+
+    async load(biz) {
+        if (sbClient) {
+            try {
+                const { data, error } = await sbClient
+                    .from('stock_transactions')
+                    .select('*')
+                    .eq('business', biz)
+                    .order('created_at', { ascending: false });
+                if (error) throw error;
+                this._txs[biz] = (data || []).map(r => this._fromDB(r));
+                localStorage.setItem(TX_KEY[biz], JSON.stringify(this._txs[biz]));
+                return;
+            } catch (e) { console.warn(`Supabase tx load (${biz}) failed, using localStorage:`, e); }
+        }
+        try { this._txs[biz] = JSON.parse(localStorage.getItem(TX_KEY[biz])) || []; } catch { this._txs[biz] = []; }
     },
-    save(txs, biz = currentBiz) { localStorage.setItem(TX_KEY[biz], JSON.stringify(txs)); },
+
     add(tx, biz = currentBiz) {
-        const all = this.getAll(biz);
-        tx.id = genId();
+        tx.id = genUUID();
         tx.createdAt = new Date().toISOString();
-        all.unshift(tx);
-        this.save(all, biz);
+        this._txs[biz].unshift(tx);
+        this._syncAdd(tx, biz);
         return tx;
     },
-    delete(id, biz = currentBiz) { this.save(this.getAll(biz).filter(t => t.id !== id), biz); }
+
+    async _syncAdd(tx, biz) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('stock_transactions').insert({
+                id: tx.id,
+                business: biz,
+                item_id: tx.itemId,
+                type: tx.type,
+                qty_change: parseFloat(tx.qtyChange) || 0,
+                unit_price: parseFloat(tx.unitPrice) || null,
+                total_value: parseFloat(tx.totalValue) || null,
+                balance_after: parseFloat(tx.balanceAfter) || null,
+                date: tx.date || null,
+                ref: tx.ref || null
+            });
+            if (error) {
+                // FK not yet synced? retry once
+                if (error.code === '23503') {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const { error: e2 } = await sbClient.from('stock_transactions').insert({
+                        id: tx.id, business: biz, item_id: tx.itemId, type: tx.type,
+                        qty_change: parseFloat(tx.qtyChange) || 0,
+                        unit_price: parseFloat(tx.unitPrice) || null,
+                        total_value: parseFloat(tx.totalValue) || null,
+                        balance_after: parseFloat(tx.balanceAfter) || null,
+                        date: tx.date || null, ref: tx.ref || null
+                    });
+                    if (e2) throw e2;
+                } else throw error;
+            }
+        } catch (e) { console.warn('Transaction add sync failed:', e); }
+    },
+
+    delete(id, biz = currentBiz) {
+        this._txs[biz] = this._txs[biz].filter(t => t.id !== id);
+        this._syncDelete(id, biz);
+    },
+
+    async _syncDelete(id, biz) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('stock_transactions').delete().eq('id', id);
+            if (error) throw error;
+        } catch (e) { console.warn('Transaction delete sync failed:', e); }
+    },
+
+    save(txs, biz = currentBiz) { this._txs[biz] = txs; }, // used in cascade deletes
+
+    _fromDB(row) {
+        return {
+            id: row.id,
+            itemId: row.item_id,
+            type: row.type,
+            qtyChange: parseFloat(row.qty_change) || 0,
+            unitPrice: parseFloat(row.unit_price) || 0,
+            totalValue: parseFloat(row.total_value) || 0,
+            balanceAfter: parseFloat(row.balance_after) || 0,
+            date: row.date || '',
+            ref: row.ref || '',
+            createdAt: row.created_at
+        };
+    }
 };
 
 // ============================================================================
@@ -750,8 +939,7 @@ function closeDeleteModal() {
 document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
     if (!_pendingDelete) return;
     if (_pendingDelete.type === 'item') {
-        StockDB.delete(_pendingDelete.id);
-        TxDB.save(TxDB.getAll().filter(t => t.itemId !== _pendingDelete.id));
+        StockDB.delete(_pendingDelete.id); // cascades transactions in cache + Supabase FK cascade
         Toast.success('Item deleted.');
     } else {
         TxDB.delete(_pendingDelete.id);
@@ -1042,9 +1230,16 @@ function initAuth() {
     const loginGate = document.getElementById('loginGate');
     const mainApp = document.getElementById('mainApp');
 
-    const showApp = () => {
+    const showApp = async () => {
         loginGate.classList.add('hidden');
         mainApp.classList.remove('hidden');
+        document.getElementById('sessionDot').style.background = '#F59E0B';
+        document.getElementById('sessionLabel').textContent = 'Loading data…';
+        // Load both businesses in parallel
+        await Promise.all([
+            StockDB.load('hardware'), StockDB.load('club'),
+            TxDB.load('hardware'), TxDB.load('club')
+        ]);
         document.getElementById('sessionDot').style.background = '#10B981';
         document.getElementById('sessionLabel').textContent = 'Session active';
         populateCategoryDropdowns();

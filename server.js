@@ -332,4 +332,13 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
     console.log(`Pintorex Construction server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+    // Keep-alive ping to prevent Render free tier from sleeping after 15 min idle
+    if (process.env.NODE_ENV === 'production') {
+        setInterval(() => {
+            require('http').get(`http://localhost:${PORT}/api/health`, (res) => {
+                res.resume(); // discard response body
+            }).on('error', () => {}); // ignore errors silently
+        }, 14 * 60 * 1000); // every 14 minutes
+    }
 });

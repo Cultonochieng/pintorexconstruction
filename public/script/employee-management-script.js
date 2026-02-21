@@ -6,12 +6,32 @@
 'use strict';
 
 // ============================================================================
-// STORAGE KEYS
+// STORAGE KEYS (offline fallback)
 // ============================================================================
 const EMP_KEY = 'pintorex_employees';
 const PAY_KEY = 'pintorex_payments';
 const SESSION_KEY = 'pintorex_session';
 const OFFLINE_TOKEN_KEY = 'pintorex_offline_token';
+
+// ============================================================================
+// SUPABASE CLIENT
+// ============================================================================
+const SUPABASE_URL = 'https://qjqgfbwirphnrbnvsbar.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcWdmYndpcnBobnJibnZzYmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NzQ0MjYsImV4cCI6MjA4NTM1MDQyNn0.WM2V0PlIpQAVzVSva9twFHPTNnrbgRKK-tQ3bPTPk_0';
+let sbClient = null;
+try {
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+        sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+} catch (e) { console.warn('Supabase not available:', e); }
+
+function genUUID() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
 
 // ============================================================================
 // UTILITY HELPERS
@@ -97,69 +117,238 @@ const Auth = {
 };
 
 // ============================================================================
-// EMPLOYEE DATA MANAGER
+// EMPLOYEE DATA MANAGER (Supabase + localStorage fallback)
 // ============================================================================
 const EmployeeManager = {
-    getAll() {
-        try { return JSON.parse(localStorage.getItem(EMP_KEY)) || []; } catch { return []; }
+    _employees: [],
+
+    getAll() { return this._employees; },
+
+    async load() {
+        if (sbClient) {
+            try {
+                const { data, error } = await sbClient.from('employees').select('*').order('created_at', { ascending: true });
+                if (error) throw error;
+                this._employees = (data || []).map(r => this._fromDB(r));
+                localStorage.setItem(EMP_KEY, JSON.stringify(this._employees));
+                return;
+            } catch (e) { console.warn('Supabase employee load failed, using localStorage:', e); }
+        }
+        try { this._employees = JSON.parse(localStorage.getItem(EMP_KEY)) || []; } catch { this._employees = []; }
     },
-    save(employees) {
-        localStorage.setItem(EMP_KEY, JSON.stringify(employees));
-    },
+
     nextCode() {
-        const all = this.getAll();
-        const nums = all.map(e => parseInt((e.code || '').replace('EMP-', '')) || 0);
-        const next = (nums.length ? Math.max(...nums) : 0) + 1;
-        return 'EMP-' + String(next).padStart(3, '0');
+        const nums = this._employees.map(e => parseInt((e.code || '').replace('EMP-', '')) || 0);
+        return 'EMP-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0');
     },
+
     add(emp) {
-        const all = this.getAll();
-        emp.id = genId();
+        emp.id = genUUID();
         emp.code = emp.code || this.nextCode();
         emp.createdAt = new Date().toISOString();
-        all.push(emp);
-        this.save(all);
+        this._employees.push(emp);
+        this._syncAdd(emp);
         return emp;
     },
+
+    async _syncAdd(emp) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('employees').insert(this._toDB(emp));
+            if (error) throw error;
+        } catch (e) { console.warn('Employee add sync failed:', e); }
+    },
+
     update(emp) {
-        const all = this.getAll();
-        const idx = all.findIndex(e => e.id === emp.id);
-        if (idx >= 0) { all[idx] = { ...all[idx], ...emp }; this.save(all); }
+        const idx = this._employees.findIndex(e => e.id === emp.id);
+        if (idx >= 0) this._employees[idx] = { ...this._employees[idx], ...emp };
+        this._syncUpdate(emp);
     },
+
+    async _syncUpdate(emp) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('employees').update(this._toDB(emp)).eq('id', emp.id);
+            if (error) throw error;
+        } catch (e) { console.warn('Employee update sync failed:', e); }
+    },
+
     delete(id) {
-        this.save(this.getAll().filter(e => e.id !== id));
+        this._employees = this._employees.filter(e => e.id !== id);
+        // Cascade: remove payments for this employee from cache
+        PaymentManager._payments = PaymentManager._payments.filter(p => p.employeeId !== id);
+        this._syncDelete(id);
     },
-    getById(id) { return this.getAll().find(e => e.id === id); }
+
+    async _syncDelete(id) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('employees').delete().eq('id', id);
+            if (error) throw error;
+        } catch (e) { console.warn('Employee delete sync failed:', e); }
+    },
+
+    getById(id) { return this._employees.find(e => e.id === id); },
+
+    _toDB(emp) {
+        return {
+            id: emp.id,
+            code: emp.code || null,
+            name: emp.name,
+            role: emp.role || null,
+            dept: emp.dept || null,
+            phone: emp.phone || null,
+            id_no: emp.idNo || null,
+            start_date: emp.startDate || null,
+            status: emp.status || 'Active',
+            pay_period: emp.payPeriod || 'Monthly',
+            base_pay: parseFloat(emp.basePay) || 0,
+            allowances: emp.allowances || [],
+            remarks: emp.remarks || null,
+            updated_at: new Date().toISOString()
+        };
+    },
+
+    _fromDB(row) {
+        return {
+            id: row.id,
+            code: row.code || '',
+            name: row.name,
+            role: row.role || '',
+            dept: row.dept || '',
+            phone: row.phone || '',
+            idNo: row.id_no || '',
+            startDate: row.start_date || '',
+            status: row.status || 'Active',
+            payPeriod: row.pay_period || 'Monthly',
+            basePay: parseFloat(row.base_pay) || 0,
+            allowances: row.allowances || [],
+            remarks: row.remarks || '',
+            createdAt: row.created_at
+        };
+    }
 };
 
 // ============================================================================
-// PAYMENT DATA MANAGER
+// PAYMENT DATA MANAGER (Supabase + localStorage fallback)
 // ============================================================================
 const PaymentManager = {
-    getAll() {
-        try { return JSON.parse(localStorage.getItem(PAY_KEY)) || []; } catch { return []; }
+    _payments: [],
+
+    getAll() { return this._payments; },
+
+    async load() {
+        if (sbClient) {
+            try {
+                const { data, error } = await sbClient.from('payments').select('*').order('created_at', { ascending: false });
+                if (error) throw error;
+                this._payments = (data || []).map(r => this._fromDB(r));
+                localStorage.setItem(PAY_KEY, JSON.stringify(this._payments));
+                return;
+            } catch (e) { console.warn('Supabase payment load failed, using localStorage:', e); }
+        }
+        try { this._payments = JSON.parse(localStorage.getItem(PAY_KEY)) || []; } catch { this._payments = []; }
     },
-    save(payments) {
-        localStorage.setItem(PAY_KEY, JSON.stringify(payments));
-    },
+
     add(pay) {
-        const all = this.getAll();
-        pay.id = genId();
+        pay.id = genUUID();
         pay.createdAt = new Date().toISOString();
-        all.unshift(pay);
-        this.save(all);
+        this._payments.unshift(pay);
+        this._syncAdd(pay);
         return pay;
     },
+
+    async _syncAdd(pay) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('payments').insert(this._toDB(pay));
+            if (error) {
+                // FK not yet synced? retry once after delay
+                if (error.code === '23503') {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const { error: e2 } = await sbClient.from('payments').insert(this._toDB(pay));
+                    if (e2) throw e2;
+                } else throw error;
+            }
+        } catch (e) { console.warn('Payment add sync failed:', e); }
+    },
+
     update(pay) {
-        const all = this.getAll();
-        const idx = all.findIndex(p => p.id === pay.id);
-        if (idx >= 0) { all[idx] = { ...all[idx], ...pay }; this.save(all); }
+        const idx = this._payments.findIndex(p => p.id === pay.id);
+        if (idx >= 0) this._payments[idx] = { ...this._payments[idx], ...pay };
+        this._syncUpdate(pay);
     },
+
+    async _syncUpdate(pay) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('payments').update(this._toDB(pay)).eq('id', pay.id);
+            if (error) throw error;
+        } catch (e) { console.warn('Payment update sync failed:', e); }
+    },
+
     delete(id) {
-        this.save(this.getAll().filter(p => p.id !== id));
+        this._payments = this._payments.filter(p => p.id !== id);
+        this._syncDelete(id);
     },
-    getById(id) { return this.getAll().find(p => p.id === id); },
-    forEmployee(empId) { return this.getAll().filter(p => p.employeeId === empId); }
+
+    async _syncDelete(id) {
+        if (!sbClient) return;
+        try {
+            const { error } = await sbClient.from('payments').delete().eq('id', id);
+            if (error) throw error;
+        } catch (e) { console.warn('Payment delete sync failed:', e); }
+    },
+
+    getById(id) { return this._payments.find(p => p.id === id); },
+    forEmployee(empId) { return this._payments.filter(p => p.employeeId === empId); },
+
+    _toDB(pay) {
+        return {
+            id: pay.id,
+            employee_id: pay.employeeId,
+            from_date: pay.fromDate || null,
+            to_date: pay.toDate || null,
+            period_label: pay.periodLabel || null,
+            units: parseFloat(pay.units) || 1,
+            base_rate: parseFloat(pay.baseRate) || 0,
+            base_pay: parseFloat(pay.basePay) || 0,
+            allowances: pay.allowances || [],
+            total_allowances: parseFloat(pay.totalAllowances) || 0,
+            deductions: pay.deductions || [],
+            total_deductions: parseFloat(pay.totalDeductions) || 0,
+            gross_pay: parseFloat(pay.grossPay) || 0,
+            net_pay: parseFloat(pay.netPay) || 0,
+            method: pay.method || 'Cash',
+            status: pay.status || 'Pending',
+            date_paid: pay.datePaid || null,
+            remarks: pay.remarks || null
+        };
+    },
+
+    _fromDB(row) {
+        return {
+            id: row.id,
+            employeeId: row.employee_id,
+            fromDate: row.from_date || '',
+            toDate: row.to_date || '',
+            periodLabel: row.period_label || '',
+            units: parseFloat(row.units) || 1,
+            baseRate: parseFloat(row.base_rate) || 0,
+            basePay: parseFloat(row.base_pay) || 0,
+            allowances: row.allowances || [],
+            totalAllowances: parseFloat(row.total_allowances) || 0,
+            deductions: row.deductions || [],
+            totalDeductions: parseFloat(row.total_deductions) || 0,
+            grossPay: parseFloat(row.gross_pay) || 0,
+            netPay: parseFloat(row.net_pay) || 0,
+            method: row.method || 'Cash',
+            status: row.status || 'Pending',
+            datePaid: row.date_paid || null,
+            remarks: row.remarks || '',
+            createdAt: row.created_at
+        };
+    }
 };
 
 // ============================================================================
@@ -678,8 +867,7 @@ function closeDeleteModal() {
 document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
     if (!_pendingDelete) return;
     if (_pendingDelete.type === 'employee') {
-        EmployeeManager.delete(_pendingDelete.id);
-        PaymentManager.save(PaymentManager.getAll().filter(p => p.employeeId !== _pendingDelete.id));
+        EmployeeManager.delete(_pendingDelete.id); // cascades payments in cache + Supabase FK cascade
         Toast.success('Employee deleted.');
     } else if (_pendingDelete.type === 'payment') {
         PaymentManager.delete(_pendingDelete.id);
@@ -1081,9 +1269,12 @@ function initAuth() {
     const loginGate = document.getElementById('loginGate');
     const mainApp = document.getElementById('mainApp');
 
-    const showApp = () => {
+    const showApp = async () => {
         loginGate.classList.add('hidden');
         mainApp.classList.remove('hidden');
+        document.getElementById('sessionDot').style.background = '#F59E0B';
+        document.getElementById('sessionLabel').textContent = 'Loading data…';
+        await Promise.all([EmployeeManager.load(), PaymentManager.load()]);
         document.getElementById('sessionDot').style.background = '#10B981';
         document.getElementById('sessionLabel').textContent = 'Session active';
         refreshAll();
