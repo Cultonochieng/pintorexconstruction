@@ -339,6 +339,6 @@ app.listen(PORT, () => {
             require('http').get(`http://localhost:${PORT}/api/health`, (res) => {
                 res.resume(); // discard response body
             }).on('error', () => {}); // ignore errors silently
-        }, 14 * 60 * 1000); // every 14 minutes
+        }, 5 * 60 * 1000); // every 5 minutes
     }
 });

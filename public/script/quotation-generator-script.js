@@ -3395,6 +3395,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     historyButton.setAttribute('aria-label', 'View document history');
     historyButton.addEventListener('click', () => DocumentHistoryPanel.open());
     document.body.appendChild(historyButton);
+    historyButton.style.display = 'none';
 
     // Initialize history panel events
     DocumentHistoryPanel.init();
@@ -3407,6 +3408,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         loginSection.classList.add('hidden');
         quotationSection.classList.remove('hidden');
         settingsButton.style.display = 'flex';
+        historyButton.style.display = 'flex';
         restoreFormData();
     } else if (OfflineAuth.hasValidToken()) {
         // Valid offline token exists — auto-login (works both online and offline)
@@ -3414,12 +3416,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         loginSection.classList.add('hidden');
         quotationSection.classList.remove('hidden');
         settingsButton.style.display = 'flex';
+        historyButton.style.display = 'flex';
         restoreFormData();
         if (!navigator.onLine) {
             Toast.info('Working offline with cached credentials');
         }
     } else {
         settingsButton.style.display = 'none';
+        historyButton.style.display = 'none';
     }
 
     // Login form handling
@@ -3468,6 +3472,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     loginSection.classList.add('hidden');
                     quotationSection.classList.remove('hidden');
                     settingsButton.style.display = 'flex';
+                    historyButton.style.display = 'flex';
                     Toast.success('Login successful');
                     restoreFormData();
                 } else {
@@ -3485,6 +3490,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     loginSection.classList.add('hidden');
                     quotationSection.classList.remove('hidden');
                     settingsButton.style.display = 'flex';
+                    historyButton.style.display = 'flex';
                     Toast.info('Logged in offline (cached session)');
                     restoreFormData();
                 } else if (!navigator.onLine) {

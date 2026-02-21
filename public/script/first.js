@@ -92,21 +92,19 @@ if (mobileMenuButton && mobileMenu) {
     const mobileMenuLinks = mobileMenu.querySelectorAll('a');
 
     const openMobileMenu = () => {
-        mobileMenu.classList.remove('-translate-y-full', 'opacity-0', 'pointer-events-none');
-        mobileMenu.classList.add('translate-y-0', 'opacity-100');
+        mobileMenu.classList.remove('hidden');
         mobileMenu.setAttribute('aria-hidden', 'false');
         mobileMenuButton.setAttribute('aria-expanded', 'true');
     };
 
     const closeMobileMenu = () => {
-        mobileMenu.classList.remove('translate-y-0', 'opacity-100');
-        mobileMenu.classList.add('-translate-y-full', 'opacity-0', 'pointer-events-none');
+        mobileMenu.classList.add('hidden');
         mobileMenu.setAttribute('aria-hidden', 'true');
         mobileMenuButton.setAttribute('aria-expanded', 'false');
     };
 
     mobileMenuButton.addEventListener('click', () => {
-        const isOpen = mobileMenu.classList.contains('translate-y-0');
+        const isOpen = !mobileMenu.classList.contains('hidden');
         if (isOpen) {
             closeMobileMenu();
         } else {

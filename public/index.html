@@ -320,12 +320,6 @@
             width: auto;
         }
 
-        /* Mobile menu - only transition transform and opacity to prevent scroll-triggered flickering */
-        #mobile-menu {
-            transition-property: transform, opacity;
-            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
         /* Construction accent colors */
         .text-construction-orange { color: #F97316; }
         .bg-construction-orange { background-color: #F97316; }
@@ -447,7 +441,7 @@
     </header>
 
     <!-- Mobile Menu -->
-    <div id="mobile-menu" class="md:hidden bg-white dark:bg-gray-800 shadow-md fixed left-0 right-0 z-40 top-16 duration-300 transform -translate-y-full opacity-0 pointer-events-none" aria-hidden="true">
+    <div id="mobile-menu" class="md:hidden bg-white dark:bg-gray-800 shadow-md fixed left-0 right-0 z-40 top-16 hidden" aria-hidden="true">
         <nav class="container mx-auto px-6 py-3" aria-label="Mobile navigation">
             <a href="#home" class="block text-gray-700 dark:text-gray-300 hover:text-construction-orange transition duration-300 py-2 font-medium">Home</a>
             <a href="#services" class="block text-gray-700 dark:text-gray-300 hover:text-construction-orange transition duration-300 py-2 font-medium">Services</a>
@@ -794,9 +788,9 @@
         <section id="contact" class="section py-16 bg-white dark:bg-gray-900">
             <div class="container mx-auto px-6">
                 <h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-800 dark:text-white font-construction" data-aos="fade-up">CONTACT US</h2>
-                <div class="flex flex-col md:flex-row justify-center items-center gap-12 max-w-5xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
                     <!-- Contact Info -->
-                    <div class="w-full md:w-1/2" data-aos="fade-right">
+                    <div data-aos="fade-right">
                         <h3 class="text-xl font-semibold mb-6 text-gray-800 dark:text-white font-construction">GET IN TOUCH</h3>
                         <div class="space-y-4">
                             <p class="text-gray-600 dark:text-gray-300 flex items-center">
@@ -820,8 +814,8 @@
                             </p>
                         </div>
                     </div>
-                    <!-- Map -->
-                    <div class="w-full md:w-1/2" data-aos="fade-left">
+                    <!-- Map — no AOS on map wrapper; AOS hides with opacity:0 which breaks Leaflet tile rendering -->
+                    <div>
                         <div id="map-container" class="relative w-full rounded-lg overflow-hidden shadow-lg" style="height: 280px;">
                             <div id="map" class="absolute inset-0"></div>
                         </div>
