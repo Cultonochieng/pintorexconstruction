@@ -365,5 +365,26 @@ app.listen(PORT, () => {
                 res.resume(); // discard response body
             }).on('error', () => {}); // ignore errors silently
         }, 5 * 60 * 1000); // every 5 minutes
+
+        // Keep Supabase project active — free tier pauses after 7 days of inactivity
+        const SUPABASE_URL = 'https://qjqgfbwirphnrbnvsbar.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqcWdmYndpcnBobnJibnZzYmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3NzQ0MjYsImV4cCI6MjA4NTM1MDQyNn0.WM2V0PlIpQAVzVSva9twFHPTNnrbgRKK-tQ3bPTPk_0';
+        const pingSupabase = () => {
+            const https = require('https');
+            const options = {
+                hostname: 'qjqgfbwirphnrbnvsbar.supabase.co',
+                path: '/rest/v1/app_settings?select=id&limit=1',
+                method: 'GET',
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            };
+            https.get(options, (res) => {
+                res.resume();
+            }).on('error', () => {});
+        };
+        pingSupabase(); // ping once on startup
+        setInterval(pingSupabase, 6 * 60 * 60 * 1000); // then every 6 hours
     }
 });
